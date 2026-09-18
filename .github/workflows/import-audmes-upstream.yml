@@ -1,0 +1,62 @@
+name: Import AudMeS upstream
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/import-audmes-upstream.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout destination repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Clone official AudMeS upstream from SourceForge
+        run: |
+          rm -rf /tmp/audmes-upstream
+          git clone --depth 1 https://git.code.sf.net/p/audmes/git /tmp/audmes-upstream
+
+      - name: Copy upstream tree
+        run: |
+          rsync -a --delete \
+            --exclude='.git' \
+            --exclude='.github/workflows/import-audmes-upstream.yml' \
+            /tmp/audmes-upstream/ ./
+
+      - name: Add mirror notice
+        run: |
+          cat > MIRROR_NOTICE.md <<'EOF'
+          # AudMeS upstream mirror notice
+
+          This repository was initialized from the official AudMeS upstream Git repository:
+
+          - Project: AUDio MEasurement System (AudMeS)
+          - Upstream Git: https://git.code.sf.net/p/audmes/git
+          - SourceForge project: https://sourceforge.net/projects/audmes/
+          - Upstream source browser: https://sourceforge.net/p/audmes/git/ci/master/tree/
+          - License: GPLv2 (see `COPYING`)
+
+          Original authors, maintainers, copyright notices, license files, and upstream history attribution remain with the AudMeS project and its contributors.
+
+          Repository owner note: this GitHub repository is a downstream copy for continued development and testing.
+          EOF
+
+      - name: Commit imported source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git commit -m "Import AudMeS upstream from SourceForge"
+          git push origin HEAD:main
