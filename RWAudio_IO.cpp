@@ -28,6 +28,8 @@
 #include <stdio.h>
 
 #include <atomic>
+#include <algorithm>
+#include <cctype>
 #include <map>
 
 #ifndef M_PI
@@ -515,6 +517,72 @@ int RWAudio::GetRWAudioDevices(RWAudioDevList *play, RWAudioDevList *record) {
   }
 
   return 0;
+}
+
+
+bool RWAudio::AutoDetectDevice(const std::vector<std::string>& nameHints,
+                               unsigned int* recordDev, unsigned int* playDev,
+                               unsigned int* bestSampleRate, std::string* matchedName) {
+  if (!m_AudioDriver || !recordDev || !playDev || !bestSampleRate || !matchedName) return false;
+
+  auto lower = [](std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return value;
+  };
+
+  int bestScore = -1;
+  unsigned int bestId = 0;
+  RtAudio::DeviceInfo bestInfo;
+  const unsigned int devices = m_AudioDriver->getDeviceCount();
+
+  for (unsigned int i = 0; i < devices; ++i) {
+    RtAudio::DeviceInfo info;
+    try {
+      info = m_AudioDriver->getDeviceInfo(i);
+    } catch (RtAudioError&) {
+      continue;
+    }
+    if (!info.probed) continue;
+    if ((info.inputChannels == 0 && info.duplexChannels == 0) ||
+        (info.outputChannels == 0 && info.duplexChannels == 0)) {
+      continue;
+    }
+
+    const std::string deviceName = lower(info.name);
+    int score = 0;
+    if (deviceName.find("e4x4 pre") != std::string::npos) score += 120;
+    if (deviceName.find("e4x4") != std::string::npos) score += 100;
+    if (deviceName.find("topping") != std::string::npos) score += 30;
+    if (deviceName.find("usb audio") != std::string::npos) score += 5;
+
+    for (const auto& hint : nameHints) {
+      const std::string h = lower(hint);
+      if (!h.empty() && deviceName.find(h) != std::string::npos) score += 20;
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestId = i;
+      bestInfo = info;
+    }
+  }
+
+  if (bestScore <= 0) return false;
+
+  *recordDev = bestId;
+  *playDev = bestId;
+  *matchedName = bestInfo.name;
+  *bestSampleRate = 48000;
+  const unsigned int preferredRates[] = {192000, 96000, 48000, 44100};
+  for (unsigned int preferred : preferredRates) {
+    if (std::find(bestInfo.sampleRates.begin(), bestInfo.sampleRates.end(), preferred) !=
+        bestInfo.sampleRates.end()) {
+      *bestSampleRate = preferred;
+      if (preferred == 96000) break;
+    }
+  }
+  return true;
 }
 
 /*
