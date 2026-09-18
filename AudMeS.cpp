@@ -579,11 +579,11 @@ void MainFrame::AutoDetectE4x4(bool showMessage) {
     label_device_status->SetLabel(wxT("● 已识别 E4x4 Pre"));
     label_device_status->SetForegroundColour(wxColour(91, 214, 141));
     label_device_detail->SetLabel(
-        wxString::Format(wxT("%s · %u Hz · 输入/输出自动绑定"), m_e4x4Name, m_SamplingFreq));
+        wxString::Format(wxT("%s · %u Hz · 输入/输出自动绑定"), m_e4x4Name.c_str(), m_SamplingFreq));
     frame_1_statusbar->SetStatusText(
         wxString::Format(wxT("E4x4 Pre 已连接 · %u Hz · 可开始测试"), m_SamplingFreq));
     if (showMessage)
-      wxMessageBox(wxString::Format(wxT("已识别：%s\n采样率：%u Hz"), m_e4x4Name, m_SamplingFreq),
+      wxMessageBox(wxString::Format(wxT("已识别：%s\n采样率：%u Hz"), m_e4x4Name.c_str(), m_SamplingFreq),
                    wxT("E4x4 Pre"), wxOK | wxICON_INFORMATION, this);
   } else {
     m_e4x4Detected = false;
@@ -895,7 +895,9 @@ void MainFrame::set_custom_props() {
 
   m_PlayDev = 0;
   m_RecordDev = 0;
-  m_SamplingFreq = 44100;
+  m_SamplingFreq = 96000;
+  m_e4x4Detected = false;
+  m_e4x4Name = wxEmptyString;
 
   sweep_div = wxAtoi(choice_osc_swp->GetString(choice_osc_swp->GetSelection()));
   setoscbuf();
@@ -941,18 +943,25 @@ void MainFrame::set_custom_props() {
   ret = m_RWAudio->InitSnd((long int)(m_OscBufferLength), m_SpeBufferLength, m_rtinfo,
                            m_SamplingFreq);
 
-  if (ret)
-    wxMessageBox(_T("Sound card issue:\n\nPlease check\nTools -> Audio interface Configuration\n"),
-                 _T("Alert"), wxICON_INFORMATION | wxOK);
+  if (ret) {
+    wxMessageBox(_T("音频接口初始化失败。\n\n请检查：工具 → 音频接口设置"),
+                 _T("音频接口"), wxICON_INFORMATION | wxOK);
+  }
+
+  ApplyInstrumentTheme(this);
+  if (!ret) AutoDetectE4x4(false);
 }
 
 void MainFrame::OnAboutClick(wxCommandEvent& WXUNUSED(event)) {
   wxString s;
-  s << wxT("AUDio MEasurement System - version ") << AUDMES_VERSION_STRING
-    << wxT("\nVaclav Peroutka - vaclavpe@seznam.cz\n\n")
-    << wxT("Project page: https://sourceforge.net/projects/audmes/\n\n") << m_rtinfo;
+  s << wxT("AudMeS 测试分析仪 - ") << AUDMES_VERSION_STRING
+    << wxT("\n\n基于 AudMeS GPLv2 开源项目继续开发。")
+    << wxT("\n原作者：Vaclav Peroutka")
+    << wxT("\n上游：https://sourceforge.net/projects/audmes/")
+    << wxT("\n\n当前重点：FFT / THD / Sweep / E4x4 Pre / SA-440F5")
+    << wxT("\n\n") << m_rtinfo;
 
-  wxMessageBox(s, _T("About application"), wxICON_INFORMATION | wxOK);
+  wxMessageBox(s, _T("关于 AudMeS"), wxICON_INFORMATION | wxOK);
 }
 
 void MainFrame::OnExitClick(wxCommandEvent& WXUNUSED(event)) { Close(); }
@@ -1148,7 +1157,7 @@ void MainFrame::CalcFreqResponse() {
     frm_running = false;
     window_1_frm->ShowUserText(wxString(""), 0, 0);
     button_frm_start->SetValue(false);
-    button_frm_start->SetLabel(_T("Start"));
+    button_frm_start->SetLabel(_T("开始扫频"));
     m_RWAudio->StopSnd();
     SendGenSettings();  // stop generator
   }
@@ -1285,16 +1294,19 @@ void MainFrame::DrawSpectrum(void) {
       else
         thdval[i] = 0.0;
     }
-    thd = 100 *
-          (thdval[1] + thdval[2] + thdval[3] + thdval[4] + thdval[5] + thdval[6] + thdval[7] +
-           thdval[8] + thdval[9]) /
-          thdval[0];
+    double harmonicPower = 0.0;
+    for (int i = 1; i < 10; ++i) harmonicPower += thdval[i] * thdval[i];
+    if (thdval[0] > 0.0) thd = 100.0 * sqrt(harmonicPower) / thdval[0];
   }
 
   /* display base frequency, magnitude and distortion */
+  const double magnitudeDb = thdval[0] > 0.0 ? 20.0 * log10(thdval[0]) : -150.0;
+  label_fft_freq_value->SetLabel(wxString::Format(wxT("基波  %.2f Hz"), freq));
+  label_fft_mag_value->SetLabel(wxString::Format(wxT("幅度  %.2f dBFS"), magnitudeDb));
+  label_thd_value->SetLabel(wxString::Format(wxT("THD  %.6f %%"), thd));
   wxString freqency;
-  freqency.Printf(wxT("Frequency : %.1lf Hz, Magnitude: %.1lf dB, THD : %lf%%, Avg: %d/%d"), freq,
-                  20.0 * log10(thdval[0]), thd, m_SMASpeLeft->GetNumSummed(1),
+  freqency.Printf(wxT("基波 %.2f Hz · 幅度 %.2f dBFS · THD %.6f %% · 平均 %d/%d"), freq,
+                  magnitudeDb, thd, m_SMASpeLeft->GetNumSummed(1),
                   m_SMASpeLeft->GetNumAverage());
   frame_1_statusbar->SetStatusText(freqency);
 
@@ -1409,10 +1421,10 @@ void MainFrame::OnSpanStart(wxCommandEvent& WXUNUSED(event)) {
   if (button_spe_start->GetValue()) {
     m_SMASpeLeft->SetNumRecords(m_SpeBufferLength >> 1);
     m_SMASpeRight->SetNumRecords(m_SpeBufferLength >> 1);
-    button_spe_start->SetLabel(_T("Stop"));
+    button_spe_start->SetLabel(_T("停止 FFT"));
     m_RWAudio->StartSnd();
   } else {
-    button_spe_start->SetLabel(_T("Start"));
+    button_spe_start->SetLabel(_T("开始 FFT"));
     m_RWAudio->StopSnd();
   }
 }
@@ -1441,7 +1453,7 @@ void MainFrame::OnOscStart(wxCommandEvent& WXUNUSED(event)) {
 void MainFrame::OnFrmStart(wxCommandEvent& WXUNUSED(event)) {
   if (button_frm_start->GetValue()) {
     long ip;
-    button_frm_start->SetLabel(_T("Stop"));
+    button_frm_start->SetLabel(_T("停止扫频"));
     wxString tpoints = text_ctrl1_frm->GetValue();
     tpoints.ToLong(&ip, 10);
     if (ip > 120) ip = 120;
