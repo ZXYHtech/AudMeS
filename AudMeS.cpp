@@ -568,23 +568,36 @@ void MainFrame::AutoDetectE4x4(bool showMessage) {
   const std::vector<std::string> hints = {"E4x4 Pre", "E4x4", "TOPPING"};
 
   if (m_RWAudio->AutoDetectDevice(hints, &rec, &play, &rate, &name)) {
-    m_e4x4Detected = true;
     m_e4x4Name = wxString(name.c_str(), wxConvUTF8);
+    const bool exactModel = m_e4x4Name.Lower().Find(wxT("e4x4")) != wxNOT_FOUND;
+    m_e4x4Detected = exactModel;
     m_RecordDev = rec;
     m_PlayDev = play;
     m_SamplingFreq = rate;
     m_RWAudio->SetSndDevices(rec, play, rate);
     setoscbuf();
     m_RWAudio->ChangeBufLen((long int)m_OscBufferLength, (long int)m_SpeBufferLength);
-    label_device_status->SetLabel(wxT("● 已识别 E4x4 Pre"));
-    label_device_status->SetForegroundColour(wxColour(91, 214, 141));
+
+    if (exactModel) {
+      label_device_status->SetLabel(wxT("● 已识别 E4x4 Pre"));
+      label_device_status->SetForegroundColour(wxColour(91, 214, 141));
+      frame_1_statusbar->SetStatusText(
+          wxString::Format(wxT("E4x4 Pre 已连接 · %u Hz · 可开始测试"), m_SamplingFreq));
+    } else {
+      label_device_status->SetLabel(wxT("● 已识别 TOPPING 音频设备（请确认 E4x4 型号）"));
+      label_device_status->SetForegroundColour(wxColour(255, 191, 92));
+      frame_1_statusbar->SetStatusText(
+          wxString::Format(wxT("TOPPING 音频设备已连接 · %u Hz · 型号待确认"), m_SamplingFreq));
+    }
+
     label_device_detail->SetLabel(
         wxString::Format(wxT("%s · %u Hz · 输入/输出自动绑定"), m_e4x4Name.c_str(), m_SamplingFreq));
-    frame_1_statusbar->SetStatusText(
-        wxString::Format(wxT("E4x4 Pre 已连接 · %u Hz · 可开始测试"), m_SamplingFreq));
     if (showMessage)
-      wxMessageBox(wxString::Format(wxT("已识别：%s\n采样率：%u Hz"), m_e4x4Name.c_str(), m_SamplingFreq),
-                   wxT("E4x4 Pre"), wxOK | wxICON_INFORMATION, this);
+      wxMessageBox(
+          wxString::Format(wxT("已识别：%s\n采样率：%u Hz\n%s"), m_e4x4Name.c_str(),
+                           m_SamplingFreq,
+                           exactModel ? wxT("型号匹配 E4x4。") : wxT("驱动名称未包含 E4x4，请人工确认型号。")),
+          wxT("TOPPING 音频接口"), wxOK | wxICON_INFORMATION, this);
   } else {
     m_e4x4Detected = false;
     m_e4x4Name = wxEmptyString;
