@@ -309,6 +309,328 @@ void MainFrame::set_properties() {
   // end wxGlade
 }
 
+
+void MainFrame::BuildInstrumentHome() {
+  wxBoxSizer* root = new wxBoxSizer(wxVERTICAL);
+
+  wxStaticText* title =
+      new wxStaticText(notebook_1_home, wxID_ANY, wxT("AudMeS 测试分析仪"));
+  wxFont titleFont = title->GetFont();
+  titleFont.SetPointSize(titleFont.GetPointSize() + 8);
+  titleFont.SetWeight(wxFONTWEIGHT_BOLD);
+  title->SetFont(titleFont);
+  root->Add(title, 0, wxLEFT | wxRIGHT | wxTOP, 24);
+
+  wxStaticText* subtitle = new wxStaticText(
+      notebook_1_home, wxID_ANY,
+      wxT("面向低噪声前置放大器测试 · FFT / THD / Sweep / SA-440F5"));
+  root->Add(subtitle, 0, wxLEFT | wxRIGHT | wxTOP | wxBOTTOM, 24);
+
+  wxStaticBoxSizer* deviceBox =
+      new wxStaticBoxSizer(wxVERTICAL, notebook_1_home, wxT("音频接口"));
+  label_device_status =
+      new wxStaticText(notebook_1_home, wxID_ANY, wxT("正在检测 TOPPING E4x4 Pre…"));
+  wxFont statusFont = label_device_status->GetFont();
+  statusFont.SetPointSize(statusFont.GetPointSize() + 3);
+  statusFont.SetWeight(wxFONTWEIGHT_BOLD);
+  label_device_status->SetFont(statusFont);
+  label_device_detail =
+      new wxStaticText(notebook_1_home, wxID_ANY, wxT("建议 Windows 使用 TOPPING 官方驱动 / ASIO"));
+  button_device_refresh =
+      new wxButton(notebook_1_home, ID_DEVICE_REFRESH, wxT("重新检测设备"));
+
+  deviceBox->Add(label_device_status, 0, wxALL, 10);
+  deviceBox->Add(label_device_detail, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
+  deviceBox->Add(button_device_refresh, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
+  root->Add(deviceBox, 0, wxLEFT | wxRIGHT | wxEXPAND, 24);
+
+  wxStaticBoxSizer* workflowBox =
+      new wxStaticBoxSizer(wxVERTICAL, notebook_1_home, wxT("推荐工作流"));
+  label_home_hint = new wxStaticText(
+      notebook_1_home, wxID_ANY,
+      wxT("① FFT / THD：1 kHz 基波、谐波与底噪\n"
+          "② Sweep：20 Hz–40 kHz 音频段幅频响应\n"
+          "③ SA-440F5 一键测试：按接线 → Loopback → 增益 → Sweep → THD → Noise 的顺序执行\n\n"
+          "Generator 与示波器功能仍保留在后台，供 Sweep 和自动测试调用。"));
+  workflowBox->Add(label_home_hint, 1, wxALL | wxEXPAND, 12);
+  root->Add(workflowBox, 1, wxLEFT | wxRIGHT | wxTOP | wxBOTTOM | wxEXPAND, 24);
+
+  notebook_1_home->SetSizer(root);
+}
+
+wxBitmap MainFrame::MakeGuidePlaceholder(const wxString& title, const wxString& subtitle,
+                                         const wxSize& size) {
+  wxBitmap bitmap(size.x, size.y);
+  wxMemoryDC dc(bitmap);
+  dc.SetBackground(wxBrush(wxColour(22, 27, 34)));
+  dc.Clear();
+  dc.SetTextForeground(wxColour(235, 240, 245));
+  dc.SetPen(wxPen(wxColour(70, 155, 210), 2));
+
+  wxRect outer(12, 12, size.x - 24, size.y - 24);
+  dc.DrawRoundedRectangle(outer, 10);
+
+  wxFont head = wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT);
+  head.SetPointSize(head.GetPointSize() + 3);
+  head.SetWeight(wxFONTWEIGHT_BOLD);
+  dc.SetFont(head);
+  dc.DrawText(title, 30, 30);
+
+  wxFont body = wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT);
+  body.SetPointSize(body.GetPointSize() + 1);
+  dc.SetFont(body);
+  dc.DrawText(subtitle, 30, 75);
+
+  const int y = size.y / 2 + 10;
+  const int boxW = (size.x - 120) / 3;
+  wxRect a(30, y, boxW, 70);
+  wxRect b(60 + boxW, y, boxW, 70);
+  wxRect c(90 + boxW * 2, y, boxW, 70);
+  dc.DrawRoundedRectangle(a, 8);
+  dc.DrawRoundedRectangle(b, 8);
+  dc.DrawRoundedRectangle(c, 8);
+  dc.DrawText(wxT("E4x4 Pre"), a.x + 16, a.y + 24);
+  dc.DrawText(wxT("SA-440F5"), b.x + 16, b.y + 24);
+  dc.DrawText(wxT("FFT / THD"), c.x + 16, c.y + 24);
+  dc.DrawLine(a.GetRight(), a.y + a.height / 2, b.x, b.y + b.height / 2);
+  dc.DrawLine(b.GetRight(), b.y + b.height / 2, c.x, c.y + c.height / 2);
+  dc.SelectObject(wxNullBitmap);
+  return bitmap;
+}
+
+void MainFrame::BuildSA440F5Panel() {
+  m_saStep = 0;
+  wxBoxSizer* root = new wxBoxSizer(wxVERTICAL);
+
+  wxBoxSizer* top = new wxBoxSizer(wxHORIZONTAL);
+  wxStaticText* title =
+      new wxStaticText(notebook_1_sa, wxID_ANY, wxT("SA-440F5 一键测试向导"));
+  wxFont titleFont = title->GetFont();
+  titleFont.SetPointSize(titleFont.GetPointSize() + 6);
+  titleFont.SetWeight(wxFONTWEIGHT_BOLD);
+  title->SetFont(titleFont);
+  button_sa_start = new wxButton(notebook_1_sa, ID_SA_START, wxT("一键开始测试"));
+  button_sa_audio_setup = new wxButton(notebook_1_sa, ID_SA_AUDIO_SETUP, wxT("音频接口设置"));
+  top->Add(title, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, 12);
+  top->Add(button_sa_audio_setup, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+  top->Add(button_sa_start, 0, wxALIGN_CENTER_VERTICAL);
+  root->Add(top, 0, wxALL | wxEXPAND, 20);
+
+  gauge_sa_progress = new wxGauge(notebook_1_sa, wxID_ANY, 7);
+  root->Add(gauge_sa_progress, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 20);
+
+  wxBoxSizer* main = new wxBoxSizer(wxHORIZONTAL);
+  wxBoxSizer* left = new wxBoxSizer(wxVERTICAL);
+  label_sa_step_counter =
+      new wxStaticText(notebook_1_sa, wxID_ANY, wxT("步骤 1 / 7"));
+  label_sa_step_title =
+      new wxStaticText(notebook_1_sa, wxID_ANY, wxT("设备与安全检查"));
+  wxFont stepFont = label_sa_step_title->GetFont();
+  stepFont.SetPointSize(stepFont.GetPointSize() + 4);
+  stepFont.SetWeight(wxFONTWEIGHT_BOLD);
+  label_sa_step_title->SetFont(stepFont);
+
+  label_sa_step_body =
+      new wxStaticText(notebook_1_sa, wxID_ANY, wxEmptyString, wxDefaultPosition,
+                       wxSize(430, -1), wxST_NO_AUTORESIZE);
+  label_sa_step_body->Wrap(420);
+  left->Add(label_sa_step_counter, 0, wxBOTTOM, 8);
+  left->Add(label_sa_step_title, 0, wxBOTTOM, 12);
+  left->Add(label_sa_step_body, 1, wxEXPAND);
+
+  bitmap_sa_guide =
+      new wxStaticBitmap(notebook_1_sa, wxID_ANY,
+                         MakeGuidePlaceholder(wxT("测试指导"), wxT("等待开始"), wxSize(620, 360)));
+  main->Add(left, 0, wxALL | wxEXPAND, 12);
+  main->Add(bitmap_sa_guide, 1, wxALL | wxEXPAND, 12);
+  root->Add(main, 1, wxLEFT | wxRIGHT | wxEXPAND, 8);
+
+  wxBoxSizer* nav = new wxBoxSizer(wxHORIZONTAL);
+  button_sa_prev = new wxButton(notebook_1_sa, ID_SA_PREV, wxT("上一步"));
+  button_sa_repeat = new wxButton(notebook_1_sa, ID_SA_REPEAT, wxT("重新生成本步引导"));
+  button_sa_next = new wxButton(notebook_1_sa, ID_SA_NEXT, wxT("下一步"));
+  nav->Add(button_sa_prev, 0, wxRIGHT, 8);
+  nav->Add(button_sa_repeat, 0, wxRIGHT, 8);
+  nav->AddStretchSpacer(1);
+  nav->Add(button_sa_next, 0);
+  root->Add(nav, 0, wxALL | wxEXPAND, 20);
+
+  notebook_1_sa->SetSizer(root);
+  UpdateSA440F5Step();
+}
+
+void MainFrame::ApplyInstrumentTheme(wxWindow* root) {
+  if (!root) return;
+  const wxColour panel(24, 29, 36);
+  const wxColour text(232, 238, 244);
+  const wxColour accent(63, 169, 225);
+
+  if (dynamic_cast<wxPanel*>(root) || root == this) root->SetBackgroundColour(panel);
+  if (wxStaticText* st = dynamic_cast<wxStaticText*>(root)) st->SetForegroundColour(text);
+  if (wxButton* bt = dynamic_cast<wxButton*>(root)) {
+    bt->SetForegroundColour(text);
+    bt->SetBackgroundColour(wxColour(42, 52, 64));
+  }
+  if (wxToggleButton* bt = dynamic_cast<wxToggleButton*>(root)) {
+    bt->SetForegroundColour(text);
+    bt->SetBackgroundColour(wxColour(42, 52, 64));
+  }
+  if (wxGauge* gauge = dynamic_cast<wxGauge*>(root)) {
+    gauge->SetForegroundColour(accent);
+  }
+
+  for (wxWindowList::compatibility_iterator node = root->GetChildren().GetFirst(); node;
+       node = node->GetNext()) {
+    ApplyInstrumentTheme(node->GetData());
+  }
+}
+
+void MainFrame::UpdateSA440F5Step() {
+  struct Step {
+    const wxChar* title;
+    const wxChar* body;
+    const wxChar* guide;
+  };
+  static const Step steps[] = {
+      {wxT("设备与安全检查"),
+       wxT("确认 TOPPING E4x4 Pre 已连接并被软件识别。\n"
+           "48 V 幻象电源必须关闭。先不要连接 SA-440F5 输出到高增益输入。\n"
+           "推荐采样率 96 kHz；正式测量前先完成 Loopback 基准。"),
+       wxT("E4x4 Pre → PC，48 V OFF")},
+      {wxT("Loopback 基准"),
+       wxT("将 E4x4 Pre 的线路输出直接回接线路输入。\n"
+           "运行 1 kHz FFT/THD，记录接口自身基波、THD 和 Noise Floor。\n"
+           "后续 DUT 结果必须与这组基线比较，不能把声卡自身噪声算进 SA-440F5。"),
+       wxT("OUT → IN 直接回环")},
+      {wxT("1 kHz 增益"),
+       wxT("E4x4 Pre 输出 → SA-440F5 差分输入，SA-440F5 输出 → E4x4 Pre Line In。\n"
+           "从小信号开始，目标约 10 mVpp 差分输入；40 dB 增益时输出约 1 Vpp。\n"
+           "禁止在 SA 输出端额外并 50 Ω 终端，否则会产生约 6 dB 衰减。"),
+       wxT("E4x4 Pre → SA-440F5 → Line In")},
+      {wxT("Sweep 幅频响应"),
+       wxT("使用 Sweep 页面测 20 Hz–40 kHz 音频段响应。\n"
+           "建议 48–96 个点，输入保持小信号，避免任何级过载。\n"
+           "E4x4 Pre 只负责音频段；100 kHz–20 MHz 仍需信号源/示波器/VNA。"),
+       wxT("20 Hz → 40 kHz 扫频")},
+      {wxT("1 kHz THD"),
+       wxT("切到 FFT / THD 页面，使用 Blackman-Harris 或 Hann 窗并增加平均次数。\n"
+           "调节输入使 SA-440F5 输出约 1–2 Vpp，再读取 H2/H3 与 THD。\n"
+           "结果必须高于 Loopback 基线足够多，才可归因于 DUT。"),
+       wxT("1 kHz 基波 + H2/H3")},
+      {wxT("低噪声测量"),
+       wxT("将 SA-440F5 两个输入在 DUT 端短路，避免长线拾取。\n"
+           "Line 输入先做粗测；需要更低噪声时可使用 E4x4 Pre 低噪声话放路径，48 V 必须关闭。\n"
+           "最终按实际增益折算成输入端 nV/√Hz，并用 RSS 去除接口本底。"),
+       wxT("输入短路 → FFT 平均 → RTI")},
+      {wxT("结果复核与报告"),
+       wxT("复核：1 kHz 增益、20 Hz–40 kHz Sweep、THD、Noise Floor。\n"
+           "保存 FFT 与 Sweep CSV；记录 E4x4 Pre 设备名、采样率、Loopback 基线与 SA-440F5 设置。\n"
+           "这一步完成后再进入 20 MHz 带宽、1 MHz CMRR 等高速仪器测试。"),
+       wxT("保存 CSV + 测试条件 + 结论")}};
+  const int count = sizeof(steps) / sizeof(steps[0]);
+  if (m_saStep < 0) m_saStep = 0;
+  if (m_saStep >= count) m_saStep = count - 1;
+
+  label_sa_step_counter->SetLabel(wxString::Format(wxT("步骤 %d / %d"), m_saStep + 1, count));
+  label_sa_step_title->SetLabel(steps[m_saStep].title);
+  label_sa_step_body->SetLabel(steps[m_saStep].body);
+  label_sa_step_body->Wrap(420);
+  gauge_sa_progress->SetValue(m_saStep + 1);
+  button_sa_prev->Enable(m_saStep > 0);
+  button_sa_next->SetLabel(m_saStep == count - 1 ? wxT("完成") : wxT("下一步"));
+
+  wxFileName exe(wxStandardPaths::Get().GetExecutablePath());
+  const wxString imageName =
+      wxString::Format(wxT("sa440f5_step_%02d.png"), m_saStep + 1);
+  const wxString imagePath = exe.GetPathWithSep() + wxT("guide_assets") +
+                             wxFileName::GetPathSeparator() + imageName;
+  wxBitmap guide;
+  if (wxFileExists(imagePath)) {
+    wxImage image(imagePath);
+    if (image.IsOk()) {
+      image.Rescale(620, 360, wxIMAGE_QUALITY_HIGH);
+      guide = wxBitmap(image);
+    }
+  }
+  if (!guide.IsOk()) {
+    guide = MakeGuidePlaceholder(steps[m_saStep].title, steps[m_saStep].guide, wxSize(620, 360));
+  }
+  bitmap_sa_guide->SetBitmap(guide);
+  notebook_1_sa->Layout();
+}
+
+void MainFrame::AutoDetectE4x4(bool showMessage) {
+  if (!m_RWAudio) return;
+  unsigned int rec = 0;
+  unsigned int play = 0;
+  unsigned int rate = 96000;
+  std::string name;
+  const std::vector<std::string> hints = {"E4x4 Pre", "E4x4", "TOPPING"};
+
+  if (m_RWAudio->AutoDetectDevice(hints, &rec, &play, &rate, &name)) {
+    m_e4x4Detected = true;
+    m_e4x4Name = wxString(name.c_str(), wxConvUTF8);
+    m_RecordDev = rec;
+    m_PlayDev = play;
+    m_SamplingFreq = rate;
+    m_RWAudio->SetSndDevices(rec, play, rate);
+    setoscbuf();
+    m_RWAudio->ChangeBufLen((long int)m_OscBufferLength, (long int)m_SpeBufferLength);
+    label_device_status->SetLabel(wxT("● 已识别 E4x4 Pre"));
+    label_device_status->SetForegroundColour(wxColour(91, 214, 141));
+    label_device_detail->SetLabel(
+        wxString::Format(wxT("%s · %u Hz · 输入/输出自动绑定"), m_e4x4Name, m_SamplingFreq));
+    frame_1_statusbar->SetStatusText(
+        wxString::Format(wxT("E4x4 Pre 已连接 · %u Hz · 可开始测试"), m_SamplingFreq));
+    if (showMessage)
+      wxMessageBox(wxString::Format(wxT("已识别：%s\n采样率：%u Hz"), m_e4x4Name, m_SamplingFreq),
+                   wxT("E4x4 Pre"), wxOK | wxICON_INFORMATION, this);
+  } else {
+    m_e4x4Detected = false;
+    m_e4x4Name = wxEmptyString;
+    label_device_status->SetLabel(wxT("○ 未自动识别 E4x4 Pre"));
+    label_device_status->SetForegroundColour(wxColour(255, 191, 92));
+    label_device_detail->SetLabel(
+        wxT("仍可使用其他声卡；也可点击“音频接口设置”手动选择。"));
+    if (showMessage)
+      wxMessageBox(wxT("未发现名称包含 E4x4 / E4x4 Pre / TOPPING 的双向音频设备。"),
+                   wxT("设备检测"), wxOK | wxICON_WARNING, this);
+  }
+}
+
+void MainFrame::OnSAStart(wxCommandEvent& WXUNUSED(event)) {
+  choice_fft->SetSelection(3);
+  choice_fftlength->SetSelection(9);
+  choice_fftavg->SetSelection(3);
+  choice_fftrx->SetSelection(1);
+  text_ctrl1_frm->SetValue(wxT("48"));
+  checkbox_gen_sync->SetValue(true);
+  txt_freq_l->SetValue(wxT("1000"));
+  txt_freq_r->SetValue(wxT("1000"));
+  m_saStep = 0;
+  AutoDetectE4x4(false);
+  UpdateSA440F5Step();
+}
+
+void MainFrame::OnSAPrev(wxCommandEvent& WXUNUSED(event)) {
+  if (m_saStep > 0) --m_saStep;
+  UpdateSA440F5Step();
+}
+
+void MainFrame::OnSANext(wxCommandEvent& WXUNUSED(event)) {
+  if (m_saStep < 6) ++m_saStep;
+  UpdateSA440F5Step();
+}
+
+void MainFrame::OnSARepeat(wxCommandEvent& WXUNUSED(event)) { UpdateSA440F5Step(); }
+
+void MainFrame::OnSAAudioSetup(wxCommandEvent& WXUNUSED(event)) {
+  wxCommandEvent dummy;
+  OnSelectSndCard(dummy);
+}
+
+void MainFrame::OnDeviceRefresh(wxCommandEvent& WXUNUSED(event)) { AutoDetectE4x4(true); }
+
 void MainFrame::do_layout() {
   // begin wxGlade: MainFrame::do_layout
   wxBoxSizer* sizer_notebook = new wxBoxSizer(wxVERTICAL);
@@ -346,6 +668,7 @@ void MainFrame::do_layout() {
   wxFlexGridSizer* sizer_GenR = new wxFlexGridSizer(3, 2, 5, 5);
 
   wxBoxSizer* sizer_spe_ctrl = new wxBoxSizer(wxVERTICAL);
+  wxBoxSizer* sizer_spe_metrics = new wxBoxSizer(wxHORIZONTAL);
   wxBoxSizer* sizer_spe_window = new wxBoxSizer(wxHORIZONTAL);
   wxBoxSizer* sizer_spe_samples = new wxBoxSizer(wxHORIZONTAL);
   wxBoxSizer* sizer_spe_span = new wxBoxSizer(wxHORIZONTAL);
@@ -509,8 +832,18 @@ void MainFrame::do_layout() {
 
   sizer_spe_10->Add(sizer_spe_ctrl, 0, wxEXPAND, 0);
   sizer_spe_9->Add(sizer_spe_10, 1, wxEXPAND, 0);
+  wxFont metricFont = label_thd_value->GetFont();
+  metricFont.SetPointSize(metricFont.GetPointSize() + 2);
+  metricFont.SetWeight(wxFONTWEIGHT_BOLD);
+  label_fft_freq_value->SetFont(metricFont);
+  label_fft_mag_value->SetFont(metricFont);
+  label_thd_value->SetFont(metricFont);
+  sizer_spe_metrics->Add(label_fft_freq_value, 1, wxALL | wxALIGN_CENTER_VERTICAL, 8);
+  sizer_spe_metrics->Add(label_fft_mag_value, 1, wxALL | wxALIGN_CENTER_VERTICAL, 8);
+  sizer_spe_metrics->Add(label_thd_value, 1, wxALL | wxALIGN_CENTER_VERTICAL, 8);
+  sizer_spe_9->Add(sizer_spe_metrics, 0, wxLEFT | wxRIGHT | wxEXPAND, 8);
   sizer_spe_9->Add(button_spe_start, 0, wxALL | wxALIGN_CENTER_HORIZONTAL | wxALIGN_CENTER_VERTICAL,
-                   5);
+                   8);
   notebook_1_spe->SetAutoLayout(true);
   notebook_1_spe->SetSizer(sizer_spe_9);
   sizer_spe_9->Fit(notebook_1_spe);
@@ -531,16 +864,17 @@ void MainFrame::do_layout() {
   sizer_9_frm->Fit(notebook_1_frm);
   sizer_9_frm->SetSizeHints(notebook_1_frm);
 
-  // main notebook
-  notebook_1->AddPage(notebook_1_gen, wxT("Generator"));
-  notebook_1->AddPage(notebook_1_osc, wxT("Oscilloscope"));
-  notebook_1->AddPage(notebook_1_spe, wxT("Spectrum Analyzer"));
-  notebook_1->AddPage(notebook_1_frm, wxT("Frequency Response"));
+  // main notebook - instrument workflow first; generator/scope remain internal helpers.
+  notebook_1->AddPage(notebook_1_home, wxT("仪器总览"));
+  notebook_1->AddPage(notebook_1_spe, wxT("FFT / THD"));
+  notebook_1->AddPage(notebook_1_frm, wxT("Sweep 扫频"));
+  notebook_1->AddPage(notebook_1_sa, wxT("SA-440F5 一键测试"));
+  notebook_1->SetSelection(0);
   sizer_notebook->Add(notebook_1, 1, wxEXPAND, 0);
   SetAutoLayout(true);
   SetSizer(sizer_notebook);
-  sizer_notebook->Fit(this);
-  sizer_notebook->SetSizeHints(this);
+  SetMinSize(wxSize(1180, 760));
+  SetSize(wxSize(1280, 820));
   Layout();
   // end wxGlade
 }
