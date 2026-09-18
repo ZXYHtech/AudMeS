@@ -603,6 +603,13 @@ void MainFrame::OnSAStart(wxCommandEvent& WXUNUSED(event)) {
   choice_fftlength->SetSelection(9);
   choice_fftavg->SetSelection(3);
   choice_fftrx->SetSelection(1);
+  m_SpeBufferLength = 65536;
+  m_SMASpeLeft->SetNumRecords(m_SpeBufferLength >> 1);
+  m_SMASpeRight->SetNumRecords(m_SpeBufferLength >> 1);
+  m_SMASpeLeft->SetNumAverage(10);
+  m_SMASpeRight->SetNumAverage(10);
+  setoscbuf();
+  m_RWAudio->ChangeBufLen((long int)m_OscBufferLength, (long int)m_SpeBufferLength);
   text_ctrl1_frm->SetValue(wxT("48"));
   checkbox_gen_sync->SetValue(true);
   txt_freq_l->SetValue(wxT("1000"));
@@ -869,6 +876,8 @@ void MainFrame::do_layout() {
   notebook_1->AddPage(notebook_1_spe, wxT("FFT / THD"));
   notebook_1->AddPage(notebook_1_frm, wxT("Sweep 扫频"));
   notebook_1->AddPage(notebook_1_sa, wxT("SA-440F5 一键测试"));
+  notebook_1_gen->Hide();
+  notebook_1_osc->Hide();
   notebook_1->SetSelection(0);
   sizer_notebook->Add(notebook_1, 1, wxEXPAND, 0);
   SetAutoLayout(true);
@@ -1621,6 +1630,12 @@ void MainFrame::OnSelectSndCard(wxCommandEvent& WXUNUSED(event)) {
     setoscbuf();
     m_RWAudio->ChangeBufLen((unsigned long)(m_OscBufferLength), m_SpeBufferLength);
     g_OscBufferChanged.store(false);
+    m_e4x4Detected = false;
+    label_device_status->SetLabel(wxT("● 已手动选择音频接口"));
+    label_device_status->SetForegroundColour(wxColour(91, 214, 141));
+    label_device_detail->SetLabel(
+        wxString::Format(wxT("录音设备 #%u · 播放设备 #%u · %u Hz"), m_RecordDev, m_PlayDev,
+                         m_SamplingFreq));
   }
 }
 
