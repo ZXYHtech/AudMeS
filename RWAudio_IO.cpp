@@ -531,9 +531,26 @@ bool RWAudio::AutoDetectDevice(const std::vector<std::string>& nameHints,
     return value;
   };
 
-  int bestScore = -1;
-  unsigned int bestId = 0;
-  RtAudio::DeviceInfo bestInfo;
+  auto scoreName = [&](const std::string& rawName) {
+    const std::string deviceName = lower(rawName);
+    int score = 0;
+    if (deviceName.find("e4x4 pre") != std::string::npos) score += 120;
+    if (deviceName.find("e4x4") != std::string::npos) score += 100;
+    if (deviceName.find("topping") != std::string::npos) score += 30;
+    if (deviceName.find("usb audio") != std::string::npos) score += 5;
+    for (const auto& hint : nameHints) {
+      const std::string h = lower(hint);
+      if (!h.empty() && deviceName.find(h) != std::string::npos) score += 20;
+    }
+    return score;
+  };
+
+  int bestRecordScore = -1;
+  int bestPlayScore = -1;
+  unsigned int bestRecordId = 0;
+  unsigned int bestPlayId = 0;
+  RtAudio::DeviceInfo bestRecordInfo;
+  RtAudio::DeviceInfo bestPlayInfo;
   const unsigned int devices = m_AudioDriver->getDeviceCount();
 
   for (unsigned int i = 0; i < devices; ++i) {
@@ -544,40 +561,38 @@ bool RWAudio::AutoDetectDevice(const std::vector<std::string>& nameHints,
       continue;
     }
     if (!info.probed) continue;
-    if ((info.inputChannels == 0 && info.duplexChannels == 0) ||
-        (info.outputChannels == 0 && info.duplexChannels == 0)) {
-      continue;
+
+    const int score = scoreName(info.name);
+    if ((info.inputChannels > 0 || info.duplexChannels > 0) && score > bestRecordScore) {
+      bestRecordScore = score;
+      bestRecordId = i;
+      bestRecordInfo = info;
     }
-
-    const std::string deviceName = lower(info.name);
-    int score = 0;
-    if (deviceName.find("e4x4 pre") != std::string::npos) score += 120;
-    if (deviceName.find("e4x4") != std::string::npos) score += 100;
-    if (deviceName.find("topping") != std::string::npos) score += 30;
-    if (deviceName.find("usb audio") != std::string::npos) score += 5;
-
-    for (const auto& hint : nameHints) {
-      const std::string h = lower(hint);
-      if (!h.empty() && deviceName.find(h) != std::string::npos) score += 20;
-    }
-
-    if (score > bestScore) {
-      bestScore = score;
-      bestId = i;
-      bestInfo = info;
+    if ((info.outputChannels > 0 || info.duplexChannels > 0) && score > bestPlayScore) {
+      bestPlayScore = score;
+      bestPlayId = i;
+      bestPlayInfo = info;
     }
   }
 
-  if (bestScore <= 0) return false;
+  if (bestRecordScore <= 0 || bestPlayScore <= 0) return false;
 
-  *recordDev = bestId;
-  *playDev = bestId;
-  *matchedName = bestInfo.name;
+  *recordDev = bestRecordId;
+  *playDev = bestPlayId;
+  *matchedName = bestRecordInfo.name;
+  if (bestPlayInfo.name != bestRecordInfo.name)
+    *matchedName += " / " + bestPlayInfo.name;
+
   *bestSampleRate = 48000;
   const unsigned int preferredRates[] = {96000, 48000, 44100, 192000};
   for (unsigned int preferred : preferredRates) {
-    if (std::find(bestInfo.sampleRates.begin(), bestInfo.sampleRates.end(), preferred) !=
-        bestInfo.sampleRates.end()) {
+    const bool recSupports =
+        std::find(bestRecordInfo.sampleRates.begin(), bestRecordInfo.sampleRates.end(), preferred) !=
+        bestRecordInfo.sampleRates.end();
+    const bool playSupports =
+        std::find(bestPlayInfo.sampleRates.begin(), bestPlayInfo.sampleRates.end(), preferred) !=
+        bestPlayInfo.sampleRates.end();
+    if (recSupports && playSupports) {
       *bestSampleRate = preferred;
       break;
     }
