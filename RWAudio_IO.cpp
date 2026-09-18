@@ -574,12 +574,12 @@ bool RWAudio::AutoDetectDevice(const std::vector<std::string>& nameHints,
   *playDev = bestId;
   *matchedName = bestInfo.name;
   *bestSampleRate = 48000;
-  const unsigned int preferredRates[] = {192000, 96000, 48000, 44100};
+  const unsigned int preferredRates[] = {96000, 48000, 44100, 192000};
   for (unsigned int preferred : preferredRates) {
     if (std::find(bestInfo.sampleRates.begin(), bestInfo.sampleRates.end(), preferred) !=
         bestInfo.sampleRates.end()) {
       *bestSampleRate = preferred;
-      if (preferred == 96000) break;
+      break;
     }
   }
   return true;
