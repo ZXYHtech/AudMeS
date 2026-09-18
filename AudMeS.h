@@ -90,12 +90,25 @@ class MainFrame : public wxFrame {
   void OnXScaleChanged(wxCommandEvent& event);
   void OnFFTAvgChanged(wxCommandEvent& event);
   void OnFFTScaleChanged(wxCommandEvent& event);
+  void OnSAStart(wxCommandEvent& event);
+  void OnSAPrev(wxCommandEvent& event);
+  void OnSANext(wxCommandEvent& event);
+  void OnSARepeat(wxCommandEvent& event);
+  void OnSAAudioSetup(wxCommandEvent& event);
+  void OnDeviceRefresh(wxCommandEvent& event);
   void DrawFreqResponse(void);
   void CalcFreqResponse(void);
   void DrawOscilloscope(void);
   void DrawSpectrum(void);
   void SendGenSettings(void);
   void TriggerSettings(void);
+  void BuildInstrumentHome();
+  void BuildSA440F5Panel();
+  void ApplyInstrumentTheme(wxWindow* root);
+  void UpdateSA440F5Step();
+  void AutoDetectE4x4(bool showMessage = false);
+  wxBitmap MakeGuidePlaceholder(const wxString& title, const wxString& subtitle,
+                                const wxSize& size);
 
  protected:
   // begin wxGlade: MainFrame::attributes
@@ -163,6 +176,8 @@ class MainFrame : public wxFrame {
   CtrlOScope* window_1_spe;
   wxToggleButton* button_spe_start;
   wxPanel* notebook_1_spe;
+  wxPanel* notebook_1_home;
+  wxPanel* notebook_1_sa;
   wxNotebook* notebook_1;
   wxTextCtrl* txt_freq_l;
   wxTextCtrl* txt_freq_r;
@@ -216,6 +231,28 @@ class MainFrame : public wxFrame {
   unsigned int m_PlayDev;
   unsigned int m_RecordDev;
   unsigned int m_SamplingFreq;
+
+  wxStaticText* label_device_status;
+  wxStaticText* label_device_detail;
+  wxStaticText* label_home_hint;
+  wxButton* button_device_refresh;
+  wxStaticText* label_thd_value;
+  wxStaticText* label_fft_freq_value;
+  wxStaticText* label_fft_mag_value;
+
+  wxStaticText* label_sa_step_counter;
+  wxStaticText* label_sa_step_title;
+  wxStaticText* label_sa_step_body;
+  wxStaticBitmap* bitmap_sa_guide;
+  wxGauge* gauge_sa_progress;
+  wxButton* button_sa_start;
+  wxButton* button_sa_prev;
+  wxButton* button_sa_next;
+  wxButton* button_sa_repeat;
+  wxButton* button_sa_audio_setup;
+  int m_saStep;
+  bool m_e4x4Detected;
+  wxString m_e4x4Name;
 };
 
 #endif  // AUDMES_H
