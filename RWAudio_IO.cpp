@@ -537,7 +537,7 @@ bool RWAudio::AutoDetectDevice(const std::vector<std::string>& nameHints,
     if (deviceName.find("e4x4 pre") != std::string::npos) score += 120;
     if (deviceName.find("e4x4") != std::string::npos) score += 100;
     if (deviceName.find("topping") != std::string::npos) score += 30;
-    if (deviceName.find("usb audio") != std::string::npos) score += 5;
+    if (score > 0 && deviceName.find("usb audio") != std::string::npos) score += 5;
     for (const auto& hint : nameHints) {
       const std::string h = lower(hint);
       if (!h.empty() && deviceName.find(h) != std::string::npos) score += 20;
