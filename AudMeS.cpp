@@ -904,7 +904,7 @@ void MainFrame::set_custom_props() {
 
   m_PlayDev = 0;
   m_RecordDev = 0;
-  m_SamplingFreq = 96000;
+  m_SamplingFreq = 44100;
   m_e4x4Detected = false;
   m_e4x4Name = wxEmptyString;
 
