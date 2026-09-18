@@ -1,0 +1,104 @@
+name: Build
+
+on:
+  push:
+    branches: [ master, develop ]
+
+jobs:
+  Linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install libwxgtk3.2-dev cmake libfccp-dev libpulse-dev libasound2-dev
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Compile and package
+        run: |
+          mkdir build
+          cd build
+          cmake ..
+          cmake --build . --target package
+
+      - name: Archive build result
+        uses: actions/upload-artifact@v6
+        with:
+          name: linux-binary
+          path: |
+            build/AudMeS
+            build/AudMeS-*.deb
+
+  MacOS:
+    runs-on: macos-14
+    env:
+      CC: cc
+      CXX: c++
+      CMAKE_BUILD_TYPE: Release
+      MACOSX_DEPLOYMENT_TARGET: 10.14
+    steps:
+      - name: Install dependencies
+        run: |
+          brew install wxwidgets
+
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Compile and package
+        run: |
+          git clone https://github.com/ben-strasser/fast-cpp-csv-parser libfccp
+          mkdir build
+          cd build
+          cmake ..
+          cmake --build . --target package
+
+      - name: Archive build result
+        uses: actions/upload-artifact@v6
+        with:
+          name: macos-binary
+          path: |
+            build/AudMeS
+            build/AudMeS-*.dmg
+
+  Windows:
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: msys2 {0}
+    env:
+      CC: gcc
+      CXX: g++
+      CMAKE_BUILD_TYPE: Release
+      GENERATOR: 'MinGW Makefiles'
+    steps:
+      - name: Install dependencies
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: >-
+            base-devel
+            git
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-make
+            mingw-w64-x86_64-wxwidgets3.2
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Compile and package
+        run: |
+          git clone https://github.com/ben-strasser/fast-cpp-csv-parser libfccp
+          mkdir build
+          cd build
+          cmake ..
+          cmake --build . --target package
+
+      - name: Archive build result
+        uses: actions/upload-artifact@v6
+        with:
+          name: win-binary
+          path: |
+            build/AudMeS-*.zip

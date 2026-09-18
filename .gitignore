@@ -1,0 +1,8 @@
+build
+xcode
+.DS_Store
+.vscode
+.vs
+libfccp
+cpp-analyze-cppcheck-build-dir
+.cache

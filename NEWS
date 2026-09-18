@@ -1,0 +1,230 @@
+News
+====
+
+2026-05-14
+----------
+
+- Enhanced trigger
+- Alligned style in all views
+- High DPI support
+
+2025-04-05
+----------
+
+- Add sin(x)/x interpolation in oscilloscope view
+- Add wobble sine in generator (slightly frequency modulated sine wave)
+- Add GutHub actions (build pipeline)
+- Rework oscilloscope channel range to full scale factor
+- Update dependencies
+- Refactor code
+- Fix reversed left and right label in generator
+
+2024-07-28
+----------
+
+- Rearrange oscilloscope view
+- Normalize vertical settings to +- 1V and adapt settings
+- Remove DC from Spectrum
+- Fix clipping region in graph
+- Add ccpcheck and clang-tidy settings
+- Refactor code using above tool hints
+
+2024-02-18
+----------
+
+- Refactor interface between AudMeS and CtrlOscope: Pass time or frequency
+  data (y axis) along with magnitude (x axis).
+- Rewrite graph code taking advantage of the y axis data.
+- Add save function to oscilloscope and spectrum.
+- Use time instead of samples in oscilloscope.
+
+2023-10-24
+----------
+
+- Add simple moving average in spectrum view.
+- Rearrange spectrum view and increase refresh rate.
+- Remember selected device in configuration window.
+Code was contributed by user Johannes.
+
+2023-04-09
+----------
+
+- Add mono channel support as requested by users.
+- Refactor several files.
+- Drop frequency measurement in oscilloscope - spectrum does it now
+  and can be run in parallel. Gives better resolution and magnitude.
+
+2022-10-09
+----------
+
+- Update README with binaries installation and Visual Studio instructions
+- Fix frequency response export in Windows
+- Add Visual Studio and MSVC support
+- Update RtAudio to 5.2.0
+- Increase font size in legend
+
+2022-04-20
+----------
+
+- Display base frequency, magnitude and THD in spectrum.
+- Add Blackman-Harris window function.
+- Increase resolution (> 16 bit) using floating point audio data.
+- Catch more errors to avoid crash.
+- Compile in DirectSound and WASAPI on Windows.
+- Use timer loop instead of sleep for frequency response.
+
+2021-11-04
+----------
+
+- Reformat README.md and fix instructions.
+- Update to latest RtAudio.
+- Switch to WASAPI on Windows.
+- Add package creation with CMake.
+- Set CMake build type to Release as default.
+- Add build instructions for MacOSX.
+- Fix Blackman window function.
+- Display RtAUdio info in About popup.
+- Compile Linux with Alsa and Pulseaudio support.
+- Avoid crash when sound card channels are mono or missing.
+
+2021-03-14
+----------
+
+- Use pulseaudio on Linux up to 192000 samples/s.
+- Catch sound card issues and show message in initialization.
+- Optimize screen repaint.
+- Improve graph and legend display.
+- Add Debian package support in CMake.
+- Add compiling instructions for Linux and Windows 10.
+- Add white noise to generator.
+- Use RMS level in frequency response instead of peak.
+
+2020-09-24
+----------
+
+- Improve FFT interpolation.
+- Add second channel to frequency response.
+
+2020-07-01
+----------
+
+- Migrate to CMake.
+- Migrate README to markdown and move change list to NEWS.
+- Migrated project from subversion to git.
+
+2019-09-25
+----------
+
+- add FFT window functions Hanning and Blackman.
+- add spectrum scaling according to sample rate.
+- modify spectrum view 10 Hz - 100kHz, 0 - -100 dB.
+- fix sound card dialog (available frequencies).
+
+2019-09-22
+----------
+
+- update RtAudio to version 5.1.0
+
+2018-??-??
+----------
+
+- Updated code to compile with current compilers on Linux.
+- Updated code to compile with recent versions of rtaudio and
+  wxWidgets.
+- Documented the choice of GNU GPL v2+ as source license.
+- Added code to save and load frequency response data as CSV.
+
+2008-08-27
+----------
+
+- sound card switching works; but problems when using different sound cards
+  for input and output
+
+2008-08-26
+----------
+
+- changed colors for numbers in scopes
+- OSC - L channel measures frequency - FFT
+- "Audio Interface" Dlg extended with sampling frequency
+- "Audio Interface" Dlg shows available interfaces but settings do not work yet
+
+2008-08-25
+----------
+
+- first Linux port!!! - compilable with wxGTK-2.6.4 wth GTK2 and
+- UNICODE; a plenty of problems:
+  - GEN gauges do not work as expected
+  - glitches in generator
+  - wxTextCtrls do not react to ENTERs
+- SA - variable FFT length
+- SA - right channel is added
+- SA - averaging of FFT values introduced
+
+2008-08-22
+----------
+
+- renamed OScopeCtrl->CtrlOScope; double buffering and some other features
+  added
+- #define for switch XScale to microseconds/div - but a lot of problems with
+  strange modulation
+
+2008-08-21
+----------
+
+- first working version of AudMeS with RtAudio driver - MinGW compiler
+- Select Sound Card dlg does not work; default device is used
+
+2008-08-20
+----------
+
+- rewrite of audio driver started - RtAudio will be used now
+
+2008-08-15
+----------
+
+- added rectangular, triangle, saw generators
+- added auto calibration of Y scale ; offset is not changing
+- prepared for load/save of configuration
+- added menu accelerators
+
+2008-06-06
+----------
+
+- triggering completely changed; currently missing control of trigger
+  level and trigger hysteresis
+- changed description of X scale and X resolution
+- in Makefile.gcc changed directory delimiters in "clean" target
+
+2008-06-04
+----------
+
+- Added text controls to set generator frequency more preciously
+- phase between L and R channels is now in degrees (before it was radians)
+
+2007-07-25
+----------
+
+- Project renamed to AUDio MEasurement System - AudMeS
+
+2007-07-15
+----------
+
+- RWAudio_win - velky prepis modulu
+- Sweep funguje - netestovano v realnem prostredi
+
+2007-07-12
+----------
+
+- AudioLab.cpp: OSC - Amplituda zmenena na dB
+- AudioLab.cpp: OSC - synchronizace L a P kanalu
+- RWAudio.h: pridan parametr faze do PlaySetGenerator()
+- RWAudio.cpp: pridana glob_phase1 a glob_phase2
+
+2007-03-27
+----------
+
+- audiolab.h: zmena zobrazeni verze - ta je ted v AUDIOLAB_VERSION_STRING
+- AudioLab.cpp: pridan vyber SND karty - NEDOKONCENO
+- dlg_audiointerface.cpp: NOVY - dialog vyberu IN/OUT zarizeni
+- RWAudio_win.cpp: pridano GetPlayDev() a GetRecDev()
+- RWAudio_win.cpp: slouceni Rekorderu a Playeru - NEDOKONCENO, NEKONZISTENTNI!!!

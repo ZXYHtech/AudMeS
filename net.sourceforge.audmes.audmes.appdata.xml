@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>net.sourceforge.audmes.audmes</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-2.0</project_license>
+  <name>audmes</name>
+  <summary>Audio measurement system</summary>
+  <description>
+    <p>Analyze audio systems using a sound card. Features include:</p>
+    <ul>
+      <li>Tone generator</li>
+      <li>Oscilloscope</li>
+      <li>Spectrum analyzer</li>
+      <li>Frequency response plot</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">net.sourceforge.audmes.audmes.desktop</launchable>
+
+  <url type="homepage">https://audmes.sourceforge.net/</url>
+
+  <content_rating type="oars-1.1" />
+
+  <kudos>
+    <kudo>UserDocs</kudo>
+  </kudos>
+
+  <releases>
+    <release version="2026.05.14" date="2026-05-14">
+      <description>
+        <ul>
+          <li>Enhanced trigger</li>
+          <li>Alligned style in all views</li>
+          <li>High DPI scaling</li>
+        </ul>
+      </description>
+    </release>
+    <release version="2025.04.05" date="2025-04-05">
+      <description>
+        <ul>
+          <li>Add sin(x)/x interpolation in oscilloscope view</li>
+          <li>Add wobble sine in generator (slightly frequency modulated sine wave)</li>
+          <li>Rework oscilloscope channel range to full scale factor</li>
+          <li>Update dependencies</li>
+          <li>Refactor code</li>
+          <li>Fix reversed left and right label in generator</li>
+          <li>Rearrange oscilloscope view</li>
+        </ul>
+      </description>
+    </release>
+    <release version="2024.07.28" date="2024-07-28">
+      <description>
+        <ul>
+          <li>Rearrange oscilloscope view</li>
+          <li>Normalize vertical settings to +- 1V and adapt settings</li>
+          <li>Remove DC from Spectrum</li>
+          <li>Fix clipping region in graph</li>
+        </ul>
+      </description>
+    </release>
+    <release version="2024.02.18" date="2024-02-18">
+      <description>
+        <ul>
+          <li>Refactor interface between AudMeS and CtrlOscope: Pass time or frequency data (y axis) along with magnitude (x axis).</li>
+          <li>Rewrite graph code taking advantage of the y axis data.</li>
+          <li>Add save function to oscilloscope and spectrum.</li>
+          <li>Use time instead of samples in oscilloscope.</li>
+        </ul>
+      </description>
+    </release>
+    <release version="2023.10.24" date="2023-10-24"/>
+    <release version="2023.04.09" date="2023-04-27"/>
+  </releases>
+
+  <developer_name>AudMeS Team</developer_name>
+  <url type="help">https://sourceforge.net/projects/audmes/</url>
+  <screenshots>
+    <screenshot type="default">
+      <image type="source">https://a.fsdn.com/con/app/proj/audmes/screenshots/Audmes-spectrum.png/max/max/1</image>
+    </screenshot>
+  </screenshots>
+
+</component>
