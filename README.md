@@ -15,6 +15,8 @@
 
 当前开发分支：`feature/instrument-ui-cn-sa440f5`
 
+📌 [查看中文开发计划](docs/DEVELOPMENT_PLAN_CN.md)
+
 ---
 
 # 上游项目说明
