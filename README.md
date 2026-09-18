@@ -1,4 +1,23 @@
-# AUDio MEasurement System
+# AudMeS 测试分析仪（ZXYHtech 下游版本）
+
+> 基于 AudMeS GPLv2 开源项目继续开发。原作者、版权与 GPLv2 许可保持不变；上游来源见 [MIRROR_NOTICE.md](MIRROR_NOTICE.md)。
+
+## 当前改造方向（2026-09-18 Preview）
+
+- 默认中文界面
+- 仪器化主界面
+- 主页面聚焦 **FFT / THD / Sweep**
+- Windows 下自动识别 **TOPPING E4x4 Pre**（按 E4x4 / TOPPING 设备名匹配）
+- **SA-440F5 一键测试向导**
+- 7 步测试引导：设备检查、Loopback、增益、Sweep、THD、Noise、报告
+- 测试引导图采用可替换资源槽 `guide_assets/sa440f5_step_01.png` ~ `07.png`
+- Generator / Oscilloscope 保留为后台能力，供 Sweep 与自动测试调用
+
+当前开发分支：`feature/instrument-ui-cn-sa440f5`
+
+---
+
+# 上游项目说明
 
 ## About
 
