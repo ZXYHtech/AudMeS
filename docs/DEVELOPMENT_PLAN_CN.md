@@ -72,16 +72,19 @@ dist/
 
 ### 构建脚本职责
 
-- [ ] 自动检测 MSYS2
-- [ ] 检查 MinGW64 GCC / CMake / Make / wxWidgets 3.2
-- [ ] 自动获取或检查 fast-cpp-csv-parser
-- [ ] 清理旧 build
-- [ ] CMake Release 构建
-- [ ] CPack 生成 ZIP
-- [ ] 自动复制 `guide_assets`
-- [ ] 输出 EXE 与 ZIP 的完整路径
-- [ ] 构建失败时给中文错误信息
-- [ ] 可选：构建完成后自动启动 AudMeS.exe
+- [x] 自动检测 MSYS2
+- [x] 检查 MinGW64 GCC / CMake / Make / wxWidgets 3.2
+- [x] 自动获取或检查 fast-cpp-csv-parser
+- [x] 清理旧 build
+- [x] CMake Release 构建
+- [x] CPack 生成 ZIP
+- [x] 自动复制 `guide_assets`
+- [x] 输出 EXE 与 ZIP 的完整路径
+- [x] 构建失败时给中文错误信息
+- [x] 可选：构建完成后自动启动 AudMeS.exe
+
+实现状态（2026-09-19）：脚本与文档已完成，Windows PowerShell 5 入口、清理流程及缺失环境提示已验证；
+当前开发机未安装 MSYS2，下面的完整编译、打包和启动验收仍待在具备 MinGW64 工具链的 Windows 10/11 电脑执行。
 
 ### 验收
 
