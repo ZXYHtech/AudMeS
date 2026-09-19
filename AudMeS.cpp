@@ -21,6 +21,9 @@
 #include "AudMeS.h"
 
 #include <math.h>
+#include <wx/dcmemory.h>
+#include <wx/filename.h>
+#include <wx/stdpaths.h>
 
 #ifdef __WXMSW__
 #include <windows.h>
@@ -74,6 +77,12 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
   EVT_CHOICE(ID_FFTAVG, MainFrame::OnFFTAvgChanged)
   EVT_CHOICE(ID_FFTREF, MainFrame::OnFFTScaleChanged)
   EVT_CHOICE(ID_FFTDBDIV, MainFrame::OnFFTScaleChanged)
+  EVT_BUTTON(ID_SA_START, MainFrame::OnSAStart)
+  EVT_BUTTON(ID_SA_PREV, MainFrame::OnSAPrev)
+  EVT_BUTTON(ID_SA_NEXT, MainFrame::OnSANext)
+  EVT_BUTTON(ID_SA_REPEAT, MainFrame::OnSARepeat)
+  EVT_BUTTON(ID_SA_AUDIO_SETUP, MainFrame::OnSAAudioSetup)
+  EVT_BUTTON(ID_DEVICE_REFRESH, MainFrame::OnDeviceRefresh)
 wxEND_EVENT_TABLE()
 
 float* g_OscBuffer_Left;
@@ -92,7 +101,9 @@ MainFrame::MainFrame(wxWindow* parent, int id, const wxString& title, const wxPo
                      const wxSize& size, long WXUNUSED(style))
     : wxFrame(parent, id, title, pos, size, wxDEFAULT_FRAME_STYLE | wxFULL_REPAINT_ON_RESIZE) {
   // begin wxGlade: MainFrame::MainFrame
-  notebook_1 = new wxNotebook(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxNB_BOTTOM);
+  notebook_1 = new wxNotebook(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxNB_TOP);
+  notebook_1_home = new wxPanel(notebook_1, -1);
+  notebook_1_sa = new wxPanel(notebook_1, -1);
   notebook_1_spe = new wxPanel(notebook_1, -1);
   notebook_1_osc = new wxPanel(notebook_1, -1);
   notebook_1_gen = new wxPanel(notebook_1, -1);
@@ -102,29 +113,29 @@ MainFrame::MainFrame(wxWindow* parent, int id, const wxString& title, const wxPo
   sizer_osc_l_staticbox = new wxStaticBox(notebook_1_osc, wxID_ANY, wxT("Vertical Left"));
   sizer_osc_r_staticbox = new wxStaticBox(notebook_1_osc, wxID_ANY, wxT("Vertical Right"));
   sizer_osc_h_staticbox = new wxStaticBox(notebook_1_osc, wxID_ANY, wxT("Horizontal"));
-  sizer_spe_fft_staticbox = new wxStaticBox(notebook_1_spe, wxID_ANY, wxT("FFT"));
-  sizer_spe_disp_staticbox = new wxStaticBox(notebook_1_spe, wxID_ANY, wxT("Display"));
-  sizer_spe_scale_staticbox = new wxStaticBox(notebook_1_spe, wxID_ANY, wxT("Scale"));
-  sizer_frm_prop_staticbox = new wxStaticBox(notebook_1_frm, wxID_ANY, wxT("Properties"));
+  sizer_spe_fft_staticbox = new wxStaticBox(notebook_1_spe, wxID_ANY, wxT("FFT 分析"));
+  sizer_spe_disp_staticbox = new wxStaticBox(notebook_1_spe, wxID_ANY, wxT("频段"));
+  sizer_spe_scale_staticbox = new wxStaticBox(notebook_1_spe, wxID_ANY, wxT("显示量程"));
+  sizer_frm_prop_staticbox = new wxStaticBox(notebook_1_frm, wxID_ANY, wxT("扫频设置"));
   frame_1_menubar = new wxMenuBar();
   wxMenu* wxglade_tmp_menu_1 = new wxMenu();
-  wxglade_tmp_menu_1->Append(wxID_OPEN, wxT("&Open config...\tAlt+O"), wxT(""), wxITEM_NORMAL);
-  wxglade_tmp_menu_1->Append(wxID_SAVE, wxT("&Save config...\tAlt+S"), wxT(""), wxITEM_NORMAL);
-  wxglade_tmp_menu_1->Append(wxID_SAVEAS, wxT("Save &As"), wxT(""), wxITEM_NORMAL);
-  wxglade_tmp_menu_1->Append(ID_LOAD_FRM, wxT("Load freq.resp."), wxT(""), wxITEM_NORMAL);
-  wxglade_tmp_menu_1->Append(ID_SAVE_FRM, wxT("Save freq.resp."), wxT(""), wxITEM_NORMAL);
-  wxglade_tmp_menu_1->Append(ID_SAVE_SPE, wxT("Save spectrum"), wxT(""), wxITEM_NORMAL);
-  wxglade_tmp_menu_1->Append(ID_SAVE_OSC, wxT("Save oscillogram"), wxT(""), wxITEM_NORMAL);
+  wxglade_tmp_menu_1->Append(wxID_OPEN, wxT("打开配置...\tAlt+O"), wxT(""), wxITEM_NORMAL);
+  wxglade_tmp_menu_1->Append(wxID_SAVE, wxT("保存配置...\tAlt+S"), wxT(""), wxITEM_NORMAL);
+  wxglade_tmp_menu_1->Append(wxID_SAVEAS, wxT("另存为"), wxT(""), wxITEM_NORMAL);
+  wxglade_tmp_menu_1->Append(ID_LOAD_FRM, wxT("载入扫频数据"), wxT(""), wxITEM_NORMAL);
+  wxglade_tmp_menu_1->Append(ID_SAVE_FRM, wxT("保存扫频数据"), wxT(""), wxITEM_NORMAL);
+  wxglade_tmp_menu_1->Append(ID_SAVE_SPE, wxT("保存 FFT 数据"), wxT(""), wxITEM_NORMAL);
+  wxglade_tmp_menu_1->Append(ID_SAVE_OSC, wxT("保存波形数据"), wxT(""), wxITEM_NORMAL);
   wxglade_tmp_menu_1->AppendSeparator();
-  wxglade_tmp_menu_1->Append(wxID_EXIT, wxT("&Close\tAlt+F4"), wxT(""), wxITEM_NORMAL);
-  frame_1_menubar->Append(wxglade_tmp_menu_1, wxT("&File"));
+  wxglade_tmp_menu_1->Append(wxID_EXIT, wxT("退出\tAlt+F4"), wxT(""), wxITEM_NORMAL);
+  frame_1_menubar->Append(wxglade_tmp_menu_1, wxT("文件"));
   wxMenu* wxglade_tmp_menu_2 = new wxMenu();
-  wxglade_tmp_menu_2->Append(ID_SNDCARD, wxT("Audio &Interface Configuration..."), wxT(""),
+  wxglade_tmp_menu_2->Append(ID_SNDCARD, wxT("音频接口设置..."), wxT(""),
                              wxITEM_NORMAL);
-  frame_1_menubar->Append(wxglade_tmp_menu_2, wxT("&Tools"));
+  frame_1_menubar->Append(wxglade_tmp_menu_2, wxT("工具"));
   wxMenu* wxglade_tmp_menu_3 = new wxMenu();
-  wxglade_tmp_menu_3->Append(wxID_ABOUT, wxT("&About..."), wxT(""), wxITEM_NORMAL);
-  frame_1_menubar->Append(wxglade_tmp_menu_3, wxT("&Help"));
+  wxglade_tmp_menu_3->Append(wxID_ABOUT, wxT("关于..."), wxT(""), wxITEM_NORMAL);
+  frame_1_menubar->Append(wxglade_tmp_menu_3, wxT("帮助"));
   SetMenuBar(frame_1_menubar);
 
   frame_1_statusbar = CreateStatusBar(1, 0);
@@ -219,49 +230,55 @@ MainFrame::MainFrame(wxWindow* parent, int id, const wxString& title, const wxPo
   button_osc_start = new wxToggleButton(notebook_1_osc, ID_OSCSTART, wxT("Start"));
 
   /* Spectrum analyzer */
-  label_5 = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("FFT Window Type:"));
+  label_5 = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("窗函数"));
   const wxString choice_fft_choices[] = {wxT("Rect"), wxT("Hanning"), wxT("Blackman"),
                                          wxT("BlackHarr")};
   choice_fft = new wxChoice(notebook_1_spe, ID_FFTWINDOW, wxDefaultPosition, wxDefaultSize, 4,
                             choice_fft_choices, 0);
 
-  label_9 = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("Number of samples:"));
+  label_9 = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("FFT 点数"));
   const wxString choice_fftlength_choices[] = {wxT("128"),   wxT("256"),  wxT("512"),  wxT("1024"),
                                                wxT("2048"),  wxT("4096"), wxT("8192"), wxT("16384"),
                                                wxT("32768"), wxT("65536")};
   choice_fftlength = new wxChoice(notebook_1_spe, ID_XSCALE, wxDefaultPosition, wxDefaultSize, 10,
                                   choice_fftlength_choices, 0);
 
-  label_rx = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("Freq. Range: [Hz]"));
+  label_rx = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("频率范围 [Hz]"));
   const wxString choice_fftry_choices[] = {wxT("2-2000"), wxT("20-20k"), wxT("10-100k")};
   choice_fftrx = new wxChoice(notebook_1_spe, ID_FFTWINDOW, wxDefaultPosition, wxDefaultSize, 3,
                               choice_fftry_choices, 0);
 
-  label_avg = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("Averaging (N):"));
+  label_avg = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("平均次数"));
   const wxString choice_fftavg_choices[] = {wxT("1"), wxT("2"), wxT("5"), wxT("10"), wxT("20")};
   choice_fftavg = new wxChoice(notebook_1_spe, ID_FFTAVG, wxDefaultPosition, wxDefaultSize, 5,
                                choice_fftavg_choices, 0);
 
-  label_spe_ref = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("Ref Level [dB]"));
+  label_spe_ref = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("参考电平 [dB]"));
   const wxString choice_spe_ref_choices[] = {wxT("0"),   wxT("-10"), wxT("-20"),
                                              wxT("-30"), wxT("-40"), wxT("-50")};
   choice_spe_ref = new wxChoice(notebook_1_spe, ID_FFTREF, wxDefaultPosition, wxDefaultSize, 6,
                                 choice_spe_ref_choices, 0);
 
-  label_spe_dbdiv = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("Amplitude [dB/div]"));
+  label_spe_dbdiv = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("幅度 [dB/div]"));
   const wxString choice_spe_dbdiv_choices[] = {wxT("3"), wxT("5"), wxT("10")};
   choice_spe_dbdiv = new wxChoice(notebook_1_spe, ID_FFTDBDIV, wxDefaultPosition, wxDefaultSize, 3,
                                   choice_spe_dbdiv_choices, 0);
 
   window_1_spe = new CtrlOScope(notebook_1_spe, _T("Hz"), _T("dB"));
-  button_spe_start = new wxToggleButton(notebook_1_spe, ID_SPESTART, wxT("Start"));
+  button_spe_start = new wxToggleButton(notebook_1_spe, ID_SPESTART, wxT("开始 FFT"));
+  label_fft_freq_value = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("基波  -- Hz"));
+  label_fft_mag_value = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("幅度  -- dBFS"));
+  label_thd_value = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("THD  -- %"));
+
 
   /* Frequency response */
-  label_1_frm = new wxStaticText(notebook_1_frm, wxID_ANY, wxT("Number of points (max 120):"));
+  label_1_frm = new wxStaticText(notebook_1_frm, wxID_ANY, wxT("扫频点数（最大 120）"));
   text_ctrl1_frm = new wxTextCtrl(notebook_1_frm, wxID_ANY, wxT(" 24"));
-  button_frm_start = new wxToggleButton(notebook_1_frm, ID_FRMSTART, wxT("Start"));
+  button_frm_start = new wxToggleButton(notebook_1_frm, ID_FRMSTART, wxT("开始扫频"));
   window_1_frm = new CtrlOScope(notebook_1_frm, _T("Hz"), _T("dB"));
 
+  BuildInstrumentHome();
+  BuildSA440F5Panel();
   set_properties();
   do_layout();
   // end wxGlade
@@ -270,10 +287,10 @@ MainFrame::MainFrame(wxWindow* parent, int id, const wxString& title, const wxPo
 
 void MainFrame::set_properties() {
   // begin wxGlade: MainFrame::set_properties
-  SetTitle(wxT("AUDio MEasurement System"));
+  SetTitle(wxT("AudMeS 测试分析仪"));
   int frame_1_statusbar_widths[] = {-1};
   frame_1_statusbar->SetStatusWidths(1, frame_1_statusbar_widths);
-  frame_1_statusbar->SetStatusText("AUDio MEasurement System - version " AUDMES_VERSION_STRING);
+  frame_1_statusbar->SetStatusText("AudMeS 测试分析仪  ·  FFT / THD / Sweep / SA-440F5");
   choice_l_wav->SetSelection(0);
   choice_r_wav->SetSelection(0);
   choice_osc_swp->SetSelection(6);
@@ -291,6 +308,348 @@ void MainFrame::set_properties() {
   choice_spe_dbdiv->SetSelection(2);
   // end wxGlade
 }
+
+
+void MainFrame::BuildInstrumentHome() {
+  wxBoxSizer* root = new wxBoxSizer(wxVERTICAL);
+
+  wxStaticText* title =
+      new wxStaticText(notebook_1_home, wxID_ANY, wxT("AudMeS 测试分析仪"));
+  wxFont titleFont = title->GetFont();
+  titleFont.SetPointSize(titleFont.GetPointSize() + 8);
+  titleFont.SetWeight(wxFONTWEIGHT_BOLD);
+  title->SetFont(titleFont);
+  root->Add(title, 0, wxLEFT | wxRIGHT | wxTOP, 24);
+
+  wxStaticText* subtitle = new wxStaticText(
+      notebook_1_home, wxID_ANY,
+      wxT("面向低噪声前置放大器测试 · FFT / THD / Sweep / SA-440F5"));
+  root->Add(subtitle, 0, wxLEFT | wxRIGHT | wxTOP | wxBOTTOM, 24);
+
+  wxStaticBoxSizer* deviceBox =
+      new wxStaticBoxSizer(wxVERTICAL, notebook_1_home, wxT("音频接口"));
+  label_device_status =
+      new wxStaticText(notebook_1_home, wxID_ANY, wxT("正在检测 TOPPING E4x4 Pre…"));
+  wxFont statusFont = label_device_status->GetFont();
+  statusFont.SetPointSize(statusFont.GetPointSize() + 3);
+  statusFont.SetWeight(wxFONTWEIGHT_BOLD);
+  label_device_status->SetFont(statusFont);
+  label_device_detail =
+      new wxStaticText(notebook_1_home, wxID_ANY, wxT("建议 Windows 使用 TOPPING 官方驱动 / ASIO"));
+  button_device_refresh =
+      new wxButton(notebook_1_home, ID_DEVICE_REFRESH, wxT("重新检测设备"));
+
+  deviceBox->Add(label_device_status, 0, wxALL, 10);
+  deviceBox->Add(label_device_detail, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
+  deviceBox->Add(button_device_refresh, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
+  root->Add(deviceBox, 0, wxLEFT | wxRIGHT | wxEXPAND, 24);
+
+  wxStaticBoxSizer* workflowBox =
+      new wxStaticBoxSizer(wxVERTICAL, notebook_1_home, wxT("推荐工作流"));
+  label_home_hint = new wxStaticText(
+      notebook_1_home, wxID_ANY,
+      wxT("① FFT / THD：1 kHz 基波、谐波与底噪\n"
+          "② Sweep：20 Hz–40 kHz 音频段幅频响应\n"
+          "③ SA-440F5 一键测试：按接线 → Loopback → 增益 → Sweep → THD → Noise 的顺序执行\n\n"
+          "Generator 与示波器功能仍保留在后台，供 Sweep 和自动测试调用。"));
+  workflowBox->Add(label_home_hint, 1, wxALL | wxEXPAND, 12);
+  root->Add(workflowBox, 1, wxLEFT | wxRIGHT | wxTOP | wxBOTTOM | wxEXPAND, 24);
+
+  notebook_1_home->SetSizer(root);
+}
+
+wxBitmap MainFrame::MakeGuidePlaceholder(const wxString& title, const wxString& subtitle,
+                                         const wxSize& size) {
+  wxBitmap bitmap(size.x, size.y);
+  wxMemoryDC dc(bitmap);
+  dc.SetBackground(wxBrush(wxColour(22, 27, 34)));
+  dc.Clear();
+  dc.SetTextForeground(wxColour(235, 240, 245));
+  dc.SetPen(wxPen(wxColour(70, 155, 210), 2));
+
+  wxRect outer(12, 12, size.x - 24, size.y - 24);
+  dc.DrawRoundedRectangle(outer, 10);
+
+  wxFont head = wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT);
+  head.SetPointSize(head.GetPointSize() + 3);
+  head.SetWeight(wxFONTWEIGHT_BOLD);
+  dc.SetFont(head);
+  dc.DrawText(title, 30, 30);
+
+  wxFont body = wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT);
+  body.SetPointSize(body.GetPointSize() + 1);
+  dc.SetFont(body);
+  dc.DrawText(subtitle, 30, 75);
+
+  const int y = size.y / 2 + 10;
+  const int boxW = (size.x - 120) / 3;
+  wxRect a(30, y, boxW, 70);
+  wxRect b(60 + boxW, y, boxW, 70);
+  wxRect c(90 + boxW * 2, y, boxW, 70);
+  dc.DrawRoundedRectangle(a, 8);
+  dc.DrawRoundedRectangle(b, 8);
+  dc.DrawRoundedRectangle(c, 8);
+  dc.DrawText(wxT("E4x4 Pre"), a.x + 16, a.y + 24);
+  dc.DrawText(wxT("SA-440F5"), b.x + 16, b.y + 24);
+  dc.DrawText(wxT("FFT / THD"), c.x + 16, c.y + 24);
+  dc.DrawLine(a.GetRight(), a.y + a.height / 2, b.x, b.y + b.height / 2);
+  dc.DrawLine(b.GetRight(), b.y + b.height / 2, c.x, c.y + c.height / 2);
+  dc.SelectObject(wxNullBitmap);
+  return bitmap;
+}
+
+void MainFrame::BuildSA440F5Panel() {
+  m_saStep = 0;
+  wxBoxSizer* root = new wxBoxSizer(wxVERTICAL);
+
+  wxBoxSizer* top = new wxBoxSizer(wxHORIZONTAL);
+  wxStaticText* title =
+      new wxStaticText(notebook_1_sa, wxID_ANY, wxT("SA-440F5 一键测试向导"));
+  wxFont titleFont = title->GetFont();
+  titleFont.SetPointSize(titleFont.GetPointSize() + 6);
+  titleFont.SetWeight(wxFONTWEIGHT_BOLD);
+  title->SetFont(titleFont);
+  button_sa_start = new wxButton(notebook_1_sa, ID_SA_START, wxT("一键开始测试"));
+  button_sa_audio_setup = new wxButton(notebook_1_sa, ID_SA_AUDIO_SETUP, wxT("音频接口设置"));
+  top->Add(title, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, 12);
+  top->Add(button_sa_audio_setup, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+  top->Add(button_sa_start, 0, wxALIGN_CENTER_VERTICAL);
+  root->Add(top, 0, wxALL | wxEXPAND, 20);
+
+  gauge_sa_progress = new wxGauge(notebook_1_sa, wxID_ANY, 7);
+  root->Add(gauge_sa_progress, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 20);
+
+  wxBoxSizer* main = new wxBoxSizer(wxHORIZONTAL);
+  wxBoxSizer* left = new wxBoxSizer(wxVERTICAL);
+  label_sa_step_counter =
+      new wxStaticText(notebook_1_sa, wxID_ANY, wxT("步骤 1 / 7"));
+  label_sa_step_title =
+      new wxStaticText(notebook_1_sa, wxID_ANY, wxT("设备与安全检查"));
+  wxFont stepFont = label_sa_step_title->GetFont();
+  stepFont.SetPointSize(stepFont.GetPointSize() + 4);
+  stepFont.SetWeight(wxFONTWEIGHT_BOLD);
+  label_sa_step_title->SetFont(stepFont);
+
+  label_sa_step_body =
+      new wxStaticText(notebook_1_sa, wxID_ANY, wxEmptyString, wxDefaultPosition,
+                       wxSize(430, -1), wxST_NO_AUTORESIZE);
+  label_sa_step_body->Wrap(420);
+  left->Add(label_sa_step_counter, 0, wxBOTTOM, 8);
+  left->Add(label_sa_step_title, 0, wxBOTTOM, 12);
+  left->Add(label_sa_step_body, 1, wxEXPAND);
+
+  bitmap_sa_guide =
+      new wxStaticBitmap(notebook_1_sa, wxID_ANY,
+                         MakeGuidePlaceholder(wxT("测试指导"), wxT("等待开始"), wxSize(620, 360)));
+  main->Add(left, 0, wxALL | wxEXPAND, 12);
+  main->Add(bitmap_sa_guide, 1, wxALL | wxEXPAND, 12);
+  root->Add(main, 1, wxLEFT | wxRIGHT | wxEXPAND, 8);
+
+  wxBoxSizer* nav = new wxBoxSizer(wxHORIZONTAL);
+  button_sa_prev = new wxButton(notebook_1_sa, ID_SA_PREV, wxT("上一步"));
+  button_sa_repeat = new wxButton(notebook_1_sa, ID_SA_REPEAT, wxT("重新生成本步引导"));
+  button_sa_next = new wxButton(notebook_1_sa, ID_SA_NEXT, wxT("下一步"));
+  nav->Add(button_sa_prev, 0, wxRIGHT, 8);
+  nav->Add(button_sa_repeat, 0, wxRIGHT, 8);
+  nav->AddStretchSpacer(1);
+  nav->Add(button_sa_next, 0);
+  root->Add(nav, 0, wxALL | wxEXPAND, 20);
+
+  notebook_1_sa->SetSizer(root);
+  UpdateSA440F5Step();
+}
+
+void MainFrame::ApplyInstrumentTheme(wxWindow* root) {
+  if (!root) return;
+  const wxColour panel(24, 29, 36);
+  const wxColour text(232, 238, 244);
+  const wxColour accent(63, 169, 225);
+
+  if (dynamic_cast<wxPanel*>(root) || root == this) root->SetBackgroundColour(panel);
+  if (wxStaticText* st = dynamic_cast<wxStaticText*>(root)) st->SetForegroundColour(text);
+  if (wxButton* bt = dynamic_cast<wxButton*>(root)) {
+    bt->SetForegroundColour(text);
+    bt->SetBackgroundColour(wxColour(42, 52, 64));
+  }
+  if (wxToggleButton* bt = dynamic_cast<wxToggleButton*>(root)) {
+    bt->SetForegroundColour(text);
+    bt->SetBackgroundColour(wxColour(42, 52, 64));
+  }
+  if (wxGauge* gauge = dynamic_cast<wxGauge*>(root)) {
+    gauge->SetForegroundColour(accent);
+  }
+
+  for (wxWindowList::compatibility_iterator node = root->GetChildren().GetFirst(); node;
+       node = node->GetNext()) {
+    ApplyInstrumentTheme(node->GetData());
+  }
+}
+
+void MainFrame::UpdateSA440F5Step() {
+  struct Step {
+    const wxChar* title;
+    const wxChar* body;
+    const wxChar* guide;
+  };
+  static const Step steps[] = {
+      {wxT("设备与安全检查"),
+       wxT("确认 TOPPING E4x4 Pre 已连接并被软件识别。\n"
+           "48 V 幻象电源必须关闭。先不要连接 SA-440F5 输出到高增益输入。\n"
+           "推荐采样率 96 kHz；正式测量前先完成 Loopback 基准。"),
+       wxT("E4x4 Pre → PC，48 V OFF")},
+      {wxT("Loopback 基准"),
+       wxT("将 E4x4 Pre 的线路输出直接回接线路输入。\n"
+           "运行 1 kHz FFT/THD，记录接口自身基波、THD 和 Noise Floor。\n"
+           "后续 DUT 结果必须与这组基线比较，不能把声卡自身噪声算进 SA-440F5。"),
+       wxT("OUT → IN 直接回环")},
+      {wxT("1 kHz 增益"),
+       wxT("E4x4 Pre 输出 → SA-440F5 差分输入，SA-440F5 输出 → E4x4 Pre Line In。\n"
+           "从小信号开始，目标约 10 mVpp 差分输入；40 dB 增益时输出约 1 Vpp。\n"
+           "禁止在 SA 输出端额外并 50 Ω 终端，否则会产生约 6 dB 衰减。"),
+       wxT("E4x4 Pre → SA-440F5 → Line In")},
+      {wxT("Sweep 幅频响应"),
+       wxT("使用 Sweep 页面测 20 Hz–40 kHz 音频段响应。\n"
+           "建议 48–96 个点，输入保持小信号，避免任何级过载。\n"
+           "E4x4 Pre 只负责音频段；100 kHz–20 MHz 仍需信号源/示波器/VNA。"),
+       wxT("20 Hz → 40 kHz 扫频")},
+      {wxT("1 kHz THD"),
+       wxT("切到 FFT / THD 页面，使用 Blackman-Harris 或 Hann 窗并增加平均次数。\n"
+           "调节输入使 SA-440F5 输出约 1–2 Vpp，再读取 H2/H3 与 THD。\n"
+           "结果必须高于 Loopback 基线足够多，才可归因于 DUT。"),
+       wxT("1 kHz 基波 + H2/H3")},
+      {wxT("低噪声测量"),
+       wxT("将 SA-440F5 两个输入在 DUT 端短路，避免长线拾取。\n"
+           "Line 输入先做粗测；需要更低噪声时可使用 E4x4 Pre 低噪声话放路径，48 V 必须关闭。\n"
+           "最终按实际增益折算成输入端 nV/√Hz，并用 RSS 去除接口本底。"),
+       wxT("输入短路 → FFT 平均 → RTI")},
+      {wxT("结果复核与报告"),
+       wxT("复核：1 kHz 增益、20 Hz–40 kHz Sweep、THD、Noise Floor。\n"
+           "保存 FFT 与 Sweep CSV；记录 E4x4 Pre 设备名、采样率、Loopback 基线与 SA-440F5 设置。\n"
+           "这一步完成后再进入 20 MHz 带宽、1 MHz CMRR 等高速仪器测试。"),
+       wxT("保存 CSV + 测试条件 + 结论")}};
+  const int count = sizeof(steps) / sizeof(steps[0]);
+  if (m_saStep < 0) m_saStep = 0;
+  if (m_saStep >= count) m_saStep = count - 1;
+
+  label_sa_step_counter->SetLabel(wxString::Format(wxT("步骤 %d / %d"), m_saStep + 1, count));
+  label_sa_step_title->SetLabel(steps[m_saStep].title);
+  label_sa_step_body->SetLabel(steps[m_saStep].body);
+  label_sa_step_body->Wrap(420);
+  gauge_sa_progress->SetValue(m_saStep + 1);
+  button_sa_prev->Enable(m_saStep > 0);
+  button_sa_next->SetLabel(m_saStep == count - 1 ? wxT("完成") : wxT("下一步"));
+
+  wxFileName exe(wxStandardPaths::Get().GetExecutablePath());
+  const wxString imageName =
+      wxString::Format(wxT("sa440f5_step_%02d.png"), m_saStep + 1);
+  const wxString imagePath = exe.GetPathWithSep() + wxT("guide_assets") +
+                             wxFileName::GetPathSeparator() + imageName;
+  wxBitmap guide;
+  if (wxFileExists(imagePath)) {
+    wxImage image(imagePath);
+    if (image.IsOk()) {
+      image.Rescale(620, 360, wxIMAGE_QUALITY_HIGH);
+      guide = wxBitmap(image);
+    }
+  }
+  if (!guide.IsOk()) {
+    guide = MakeGuidePlaceholder(steps[m_saStep].title, steps[m_saStep].guide, wxSize(620, 360));
+  }
+  bitmap_sa_guide->SetBitmap(guide);
+  notebook_1_sa->Layout();
+}
+
+void MainFrame::AutoDetectE4x4(bool showMessage) {
+  if (!m_RWAudio) return;
+  unsigned int rec = 0;
+  unsigned int play = 0;
+  unsigned int rate = 96000;
+  std::string name;
+  const std::vector<std::string> hints = {"E4x4 Pre", "E4x4", "TOPPING"};
+
+  if (m_RWAudio->AutoDetectDevice(hints, &rec, &play, &rate, &name)) {
+    m_e4x4Name = wxString(name.c_str(), wxConvUTF8);
+    const bool exactModel = m_e4x4Name.Lower().Find(wxT("e4x4")) != wxNOT_FOUND;
+    m_e4x4Detected = exactModel;
+    m_RecordDev = rec;
+    m_PlayDev = play;
+    m_SamplingFreq = rate;
+    m_RWAudio->SetSndDevices(rec, play, rate);
+    setoscbuf();
+    m_RWAudio->ChangeBufLen((long int)m_OscBufferLength, (long int)m_SpeBufferLength);
+
+    if (exactModel) {
+      label_device_status->SetLabel(wxT("● 已识别 E4x4 Pre"));
+      label_device_status->SetForegroundColour(wxColour(91, 214, 141));
+      frame_1_statusbar->SetStatusText(
+          wxString::Format(wxT("E4x4 Pre 已连接 · %u Hz · 可开始测试"), m_SamplingFreq));
+    } else {
+      label_device_status->SetLabel(wxT("● 已识别 TOPPING 音频设备（请确认 E4x4 型号）"));
+      label_device_status->SetForegroundColour(wxColour(255, 191, 92));
+      frame_1_statusbar->SetStatusText(
+          wxString::Format(wxT("TOPPING 音频设备已连接 · %u Hz · 型号待确认"), m_SamplingFreq));
+    }
+
+    label_device_detail->SetLabel(
+        wxString::Format(wxT("%s · %u Hz · 输入/输出自动绑定"), m_e4x4Name.c_str(), m_SamplingFreq));
+    if (showMessage)
+      wxMessageBox(
+          wxString::Format(wxT("已识别：%s\n采样率：%u Hz\n%s"), m_e4x4Name.c_str(),
+                           m_SamplingFreq,
+                           exactModel ? wxT("型号匹配 E4x4。") : wxT("驱动名称未包含 E4x4，请人工确认型号。")),
+          wxT("TOPPING 音频接口"), wxOK | wxICON_INFORMATION, this);
+  } else {
+    m_e4x4Detected = false;
+    m_e4x4Name = wxEmptyString;
+    label_device_status->SetLabel(wxT("○ 未自动识别 E4x4 Pre"));
+    label_device_status->SetForegroundColour(wxColour(255, 191, 92));
+    label_device_detail->SetLabel(
+        wxT("仍可使用其他声卡；也可点击“音频接口设置”手动选择。"));
+    if (showMessage)
+      wxMessageBox(wxT("未发现名称包含 E4x4 / E4x4 Pre / TOPPING 的双向音频设备。"),
+                   wxT("设备检测"), wxOK | wxICON_WARNING, this);
+  }
+}
+
+void MainFrame::OnSAStart(wxCommandEvent& WXUNUSED(event)) {
+  choice_fft->SetSelection(3);
+  choice_fftlength->SetSelection(9);
+  choice_fftavg->SetSelection(3);
+  choice_fftrx->SetSelection(1);
+  m_SpeBufferLength = 65536;
+  m_SMASpeLeft->SetNumRecords(m_SpeBufferLength >> 1);
+  m_SMASpeRight->SetNumRecords(m_SpeBufferLength >> 1);
+  m_SMASpeLeft->SetNumAverage(10);
+  m_SMASpeRight->SetNumAverage(10);
+  setoscbuf();
+  m_RWAudio->ChangeBufLen((long int)m_OscBufferLength, (long int)m_SpeBufferLength);
+  text_ctrl1_frm->SetValue(wxT("48"));
+  checkbox_gen_sync->SetValue(true);
+  txt_freq_l->SetValue(wxT("1000"));
+  txt_freq_r->SetValue(wxT("1000"));
+  m_saStep = 0;
+  AutoDetectE4x4(false);
+  UpdateSA440F5Step();
+}
+
+void MainFrame::OnSAPrev(wxCommandEvent& WXUNUSED(event)) {
+  if (m_saStep > 0) --m_saStep;
+  UpdateSA440F5Step();
+}
+
+void MainFrame::OnSANext(wxCommandEvent& WXUNUSED(event)) {
+  if (m_saStep < 6) ++m_saStep;
+  UpdateSA440F5Step();
+}
+
+void MainFrame::OnSARepeat(wxCommandEvent& WXUNUSED(event)) { UpdateSA440F5Step(); }
+
+void MainFrame::OnSAAudioSetup(wxCommandEvent& WXUNUSED(event)) {
+  wxCommandEvent dummy;
+  OnSelectSndCard(dummy);
+}
+
+void MainFrame::OnDeviceRefresh(wxCommandEvent& WXUNUSED(event)) { AutoDetectE4x4(true); }
 
 void MainFrame::do_layout() {
   // begin wxGlade: MainFrame::do_layout
@@ -329,6 +688,7 @@ void MainFrame::do_layout() {
   wxFlexGridSizer* sizer_GenR = new wxFlexGridSizer(3, 2, 5, 5);
 
   wxBoxSizer* sizer_spe_ctrl = new wxBoxSizer(wxVERTICAL);
+  wxBoxSizer* sizer_spe_metrics = new wxBoxSizer(wxHORIZONTAL);
   wxBoxSizer* sizer_spe_window = new wxBoxSizer(wxHORIZONTAL);
   wxBoxSizer* sizer_spe_samples = new wxBoxSizer(wxHORIZONTAL);
   wxBoxSizer* sizer_spe_span = new wxBoxSizer(wxHORIZONTAL);
@@ -492,8 +852,18 @@ void MainFrame::do_layout() {
 
   sizer_spe_10->Add(sizer_spe_ctrl, 0, wxEXPAND, 0);
   sizer_spe_9->Add(sizer_spe_10, 1, wxEXPAND, 0);
+  wxFont metricFont = label_thd_value->GetFont();
+  metricFont.SetPointSize(metricFont.GetPointSize() + 2);
+  metricFont.SetWeight(wxFONTWEIGHT_BOLD);
+  label_fft_freq_value->SetFont(metricFont);
+  label_fft_mag_value->SetFont(metricFont);
+  label_thd_value->SetFont(metricFont);
+  sizer_spe_metrics->Add(label_fft_freq_value, 1, wxALL | wxALIGN_CENTER_VERTICAL, 8);
+  sizer_spe_metrics->Add(label_fft_mag_value, 1, wxALL | wxALIGN_CENTER_VERTICAL, 8);
+  sizer_spe_metrics->Add(label_thd_value, 1, wxALL | wxALIGN_CENTER_VERTICAL, 8);
+  sizer_spe_9->Add(sizer_spe_metrics, 0, wxLEFT | wxRIGHT | wxEXPAND, 8);
   sizer_spe_9->Add(button_spe_start, 0, wxALL | wxALIGN_CENTER_HORIZONTAL | wxALIGN_CENTER_VERTICAL,
-                   5);
+                   8);
   notebook_1_spe->SetAutoLayout(true);
   notebook_1_spe->SetSizer(sizer_spe_9);
   sizer_spe_9->Fit(notebook_1_spe);
@@ -514,16 +884,19 @@ void MainFrame::do_layout() {
   sizer_9_frm->Fit(notebook_1_frm);
   sizer_9_frm->SetSizeHints(notebook_1_frm);
 
-  // main notebook
-  notebook_1->AddPage(notebook_1_gen, wxT("Generator"));
-  notebook_1->AddPage(notebook_1_osc, wxT("Oscilloscope"));
-  notebook_1->AddPage(notebook_1_spe, wxT("Spectrum Analyzer"));
-  notebook_1->AddPage(notebook_1_frm, wxT("Frequency Response"));
+  // main notebook - instrument workflow first; generator/scope remain internal helpers.
+  notebook_1->AddPage(notebook_1_home, wxT("仪器总览"));
+  notebook_1->AddPage(notebook_1_spe, wxT("FFT / THD"));
+  notebook_1->AddPage(notebook_1_frm, wxT("Sweep 扫频"));
+  notebook_1->AddPage(notebook_1_sa, wxT("SA-440F5 一键测试"));
+  notebook_1_gen->Hide();
+  notebook_1_osc->Hide();
+  notebook_1->SetSelection(0);
   sizer_notebook->Add(notebook_1, 1, wxEXPAND, 0);
   SetAutoLayout(true);
   SetSizer(sizer_notebook);
-  sizer_notebook->Fit(this);
-  sizer_notebook->SetSizeHints(this);
+  SetMinSize(wxSize(1180, 760));
+  SetSize(wxSize(1280, 820));
   Layout();
   // end wxGlade
 }
@@ -545,6 +918,8 @@ void MainFrame::set_custom_props() {
   m_PlayDev = 0;
   m_RecordDev = 0;
   m_SamplingFreq = 44100;
+  m_e4x4Detected = false;
+  m_e4x4Name = wxEmptyString;
 
   sweep_div = wxAtoi(choice_osc_swp->GetString(choice_osc_swp->GetSelection()));
   setoscbuf();
@@ -590,18 +965,25 @@ void MainFrame::set_custom_props() {
   ret = m_RWAudio->InitSnd((long int)(m_OscBufferLength), m_SpeBufferLength, m_rtinfo,
                            m_SamplingFreq);
 
-  if (ret)
-    wxMessageBox(_T("Sound card issue:\n\nPlease check\nTools -> Audio interface Configuration\n"),
-                 _T("Alert"), wxICON_INFORMATION | wxOK);
+  if (ret) {
+    wxMessageBox(_T("音频接口初始化失败。\n\n请检查：工具 → 音频接口设置"),
+                 _T("音频接口"), wxICON_INFORMATION | wxOK);
+  }
+
+  ApplyInstrumentTheme(this);
+  if (!ret) AutoDetectE4x4(false);
 }
 
 void MainFrame::OnAboutClick(wxCommandEvent& WXUNUSED(event)) {
   wxString s;
-  s << wxT("AUDio MEasurement System - version ") << AUDMES_VERSION_STRING
-    << wxT("\nVaclav Peroutka - vaclavpe@seznam.cz\n\n")
-    << wxT("Project page: https://sourceforge.net/projects/audmes/\n\n") << m_rtinfo;
+  s << wxT("AudMeS 测试分析仪 - ") << AUDMES_VERSION_STRING
+    << wxT("\n\n基于 AudMeS GPLv2 开源项目继续开发。")
+    << wxT("\n原作者：Vaclav Peroutka")
+    << wxT("\n上游：https://sourceforge.net/projects/audmes/")
+    << wxT("\n\n当前重点：FFT / THD / Sweep / E4x4 Pre / SA-440F5")
+    << wxT("\n\n") << m_rtinfo;
 
-  wxMessageBox(s, _T("About application"), wxICON_INFORMATION | wxOK);
+  wxMessageBox(s, _T("关于 AudMeS"), wxICON_INFORMATION | wxOK);
 }
 
 void MainFrame::OnExitClick(wxCommandEvent& WXUNUSED(event)) { Close(); }
@@ -797,7 +1179,7 @@ void MainFrame::CalcFreqResponse() {
     frm_running = false;
     window_1_frm->ShowUserText(wxString(""), 0, 0);
     button_frm_start->SetValue(false);
-    button_frm_start->SetLabel(_T("Start"));
+    button_frm_start->SetLabel(_T("开始扫频"));
     m_RWAudio->StopSnd();
     SendGenSettings();  // stop generator
   }
@@ -934,16 +1316,19 @@ void MainFrame::DrawSpectrum(void) {
       else
         thdval[i] = 0.0;
     }
-    thd = 100 *
-          (thdval[1] + thdval[2] + thdval[3] + thdval[4] + thdval[5] + thdval[6] + thdval[7] +
-           thdval[8] + thdval[9]) /
-          thdval[0];
+    double harmonicPower = 0.0;
+    for (int i = 1; i < 10; ++i) harmonicPower += thdval[i] * thdval[i];
+    if (thdval[0] > 0.0) thd = 100.0 * sqrt(harmonicPower) / thdval[0];
   }
 
   /* display base frequency, magnitude and distortion */
+  const double magnitudeDb = thdval[0] > 0.0 ? 20.0 * log10(thdval[0]) : -150.0;
+  label_fft_freq_value->SetLabel(wxString::Format(wxT("基波  %.2f Hz"), freq));
+  label_fft_mag_value->SetLabel(wxString::Format(wxT("幅度  %.2f dBFS"), magnitudeDb));
+  label_thd_value->SetLabel(wxString::Format(wxT("THD  %.6f %%"), thd));
   wxString freqency;
-  freqency.Printf(wxT("Frequency : %.1lf Hz, Magnitude: %.1lf dB, THD : %lf%%, Avg: %d/%d"), freq,
-                  20.0 * log10(thdval[0]), thd, m_SMASpeLeft->GetNumSummed(1),
+  freqency.Printf(wxT("基波 %.2f Hz · 幅度 %.2f dBFS · THD %.6f %% · 平均 %d/%d"), freq,
+                  magnitudeDb, thd, m_SMASpeLeft->GetNumSummed(1),
                   m_SMASpeLeft->GetNumAverage());
   frame_1_statusbar->SetStatusText(freqency);
 
@@ -1058,10 +1443,10 @@ void MainFrame::OnSpanStart(wxCommandEvent& WXUNUSED(event)) {
   if (button_spe_start->GetValue()) {
     m_SMASpeLeft->SetNumRecords(m_SpeBufferLength >> 1);
     m_SMASpeRight->SetNumRecords(m_SpeBufferLength >> 1);
-    button_spe_start->SetLabel(_T("Stop"));
+    button_spe_start->SetLabel(_T("停止 FFT"));
     m_RWAudio->StartSnd();
   } else {
-    button_spe_start->SetLabel(_T("Start"));
+    button_spe_start->SetLabel(_T("开始 FFT"));
     m_RWAudio->StopSnd();
   }
 }
@@ -1090,7 +1475,7 @@ void MainFrame::OnOscStart(wxCommandEvent& WXUNUSED(event)) {
 void MainFrame::OnFrmStart(wxCommandEvent& WXUNUSED(event)) {
   if (button_frm_start->GetValue()) {
     long ip;
-    button_frm_start->SetLabel(_T("Stop"));
+    button_frm_start->SetLabel(_T("停止扫频"));
     wxString tpoints = text_ctrl1_frm->GetValue();
     tpoints.ToLong(&ip, 10);
     if (ip > 120) ip = 120;
@@ -1258,6 +1643,12 @@ void MainFrame::OnSelectSndCard(wxCommandEvent& WXUNUSED(event)) {
     setoscbuf();
     m_RWAudio->ChangeBufLen((unsigned long)(m_OscBufferLength), m_SpeBufferLength);
     g_OscBufferChanged.store(false);
+    m_e4x4Detected = false;
+    label_device_status->SetLabel(wxT("● 已手动选择音频接口"));
+    label_device_status->SetForegroundColour(wxColour(91, 214, 141));
+    label_device_detail->SetLabel(
+        wxString::Format(wxT("录音设备 #%u · 播放设备 #%u · %u Hz"), m_RecordDev, m_PlayDev,
+                         m_SamplingFreq));
   }
 }
 

@@ -25,6 +25,8 @@
 #define RWAUDIO_IO_H
 
 #include <rtaudio/RtAudio.h>
+#include <string>
+#include <vector>
 
 struct RWAudioDevList {
   std::vector<RtAudio::DeviceInfo> card_info;
@@ -47,6 +49,9 @@ class RWAudio {
   void SetTrigger(int channel, int edge, double level, double hyst, int pre);
 
   int GetRWAudioDevices(RWAudioDevList* play, RWAudioDevList* record);
+  bool AutoDetectDevice(const std::vector<std::string>& nameHints, unsigned int* recordDev,
+                        unsigned int* playDev, unsigned int* bestSampleRate,
+                        std::string* matchedName);
 
   /* generator */
   enum Waveform { SINE, RECT, SAW, TRI, NOISE, WOBBLE };

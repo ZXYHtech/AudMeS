@@ -100,7 +100,7 @@ void AudioInterfaceDialog::CreateControls() {
   itemDialog1->SetSizer(itemBoxSizer2);
 
   wxStaticBox* itemFreqStaticBox =
-      new wxStaticBox(itemDialog1, wxID_ANY, _("Available Frequencies [Hz]"));
+      new wxStaticBox(itemDialog1, wxID_ANY, _("可用采样率 [Hz]"));
   wxStaticBoxSizer* itemFreqStaticBoxSizer = new wxStaticBoxSizer(itemFreqStaticBox, wxHORIZONTAL);
   itemBoxSizer2->Add(itemFreqStaticBoxSizer, 1, wxEXPAND | wxALL, 5);
   wxString* itemFreqChoiceStrings = NULL;
@@ -109,7 +109,7 @@ void AudioInterfaceDialog::CreateControls() {
   itemFreqStaticBoxSizer->Add(itemFreqChoice, 1, wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
   wxStaticBox* itemStaticBoxSizer3Static =
-      new wxStaticBox(itemDialog1, wxID_ANY, _("Output Audio Device"));
+      new wxStaticBox(itemDialog1, wxID_ANY, _("输出音频设备"));
   wxStaticBoxSizer* itemStaticBoxSizer3 =
       new wxStaticBoxSizer(itemStaticBoxSizer3Static, wxHORIZONTAL);
   itemBoxSizer2->Add(itemStaticBoxSizer3, 1, wxEXPAND | wxALL, 5);
@@ -120,7 +120,7 @@ void AudioInterfaceDialog::CreateControls() {
   itemStaticBoxSizer3->Add(itemChoice4, 1, wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
   wxStaticBox* itemStaticBoxSizer5Static =
-      new wxStaticBox(itemDialog1, wxID_ANY, _("Input Audio Device"));
+      new wxStaticBox(itemDialog1, wxID_ANY, _("输入音频设备"));
   wxStaticBoxSizer* itemStaticBoxSizer5 =
       new wxStaticBoxSizer(itemStaticBoxSizer5Static, wxHORIZONTAL);
   itemBoxSizer2->Add(itemStaticBoxSizer5, 0, wxEXPAND | wxALL, 5);
@@ -134,13 +134,13 @@ void AudioInterfaceDialog::CreateControls() {
   itemBoxSizer2->Add(itemBoxSizer7, 0, wxALIGN_CENTER_HORIZONTAL | wxALL, 10);
 
   wxButton* itemButton8 =
-      new wxButton(itemDialog1, wxID_OK, _("&OK"), wxDefaultPosition, wxDefaultSize, 0);
+      new wxButton(itemDialog1, wxID_OK, _("确定"), wxDefaultPosition, wxDefaultSize, 0);
   itemBoxSizer7->Add(itemButton8, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
   itemBoxSizer7->Add(5, 5, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
   wxButton* itemButton10 =
-      new wxButton(itemDialog1, wxID_CANCEL, _("&Cancel"), wxDefaultPosition, wxDefaultSize, 0);
+      new wxButton(itemDialog1, wxID_CANCEL, _("取消"), wxDefaultPosition, wxDefaultSize, 0);
   itemBoxSizer7->Add(itemButton10, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
   ////@end AudioInterfaceDialog content construction

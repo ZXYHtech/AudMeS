@@ -2,7 +2,8 @@ name: Build
 
 on:
   push:
-    branches: [ master, develop ]
+    branches: [ main, master, develop, feature/instrument-ui-cn-sa440f5 ]
+  workflow_dispatch:
 
 jobs:
   Linux:
@@ -83,7 +84,7 @@ jobs:
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-make
-            mingw-w64-x86_64-wxwidgets3.2
+            mingw-w64-x86_64-wxwidgets3.2-msw
 
       - name: Checkout repository
         uses: actions/checkout@v6

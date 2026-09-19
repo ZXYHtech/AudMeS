@@ -1,4 +1,5 @@
 build
+dist
 xcode
 .DS_Store
 .vscode

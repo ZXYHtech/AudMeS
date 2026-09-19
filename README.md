@@ -1,4 +1,44 @@
-# AUDio MEasurement System
+# AudMeS 测试分析仪（ZXYHtech 下游版本）
+
+> 基于 AudMeS GPLv2 开源项目继续开发。原作者、版权与 GPLv2 许可保持不变；上游来源见 [MIRROR_NOTICE.md](MIRROR_NOTICE.md)。
+
+## 当前改造方向（2026-09-18 Preview）
+
+- 默认中文界面
+- 仪器化主界面
+- 主页面聚焦 **FFT / THD / Sweep**
+- Windows 下自动识别 **TOPPING E4x4 Pre**（按 E4x4 / TOPPING 设备名匹配）
+- **SA-440F5 一键测试向导**
+- 7 步测试引导：设备检查、Loopback、增益、Sweep、THD、Noise、报告
+- 测试引导图采用可替换资源槽 `guide_assets/sa440f5_step_01.png` ~ `07.png`
+- Generator / Oscilloscope 保留为后台能力，供 Sweep 与自动测试调用
+
+当前开发分支：`feature/instrument-ui-cn-sa440f5`
+
+📌 [查看中文开发计划](docs/DEVELOPMENT_PLAN_CN.md)
+
+## Windows 中文预览版一键构建
+
+先安装 64 位 MSYS2 及 MinGW64 工具链，然后在资源管理器中双击
+`scripts/build_windows_portable.bat`。脚本会检查 GCC、CMake、Make、wxWidgets 3.2，
+自动获取 `fast-cpp-csv-parser`，执行 Release 构建和 CPack 打包，并递归补齐程序依赖的
+MinGW DLL。最终结果位于 `dist/`：
+
+- `AudMeS-cn-preview-win64/AudMeS.exe`
+- `AudMeS-YYYY.MM.DD-cn-preview-win64.zip`
+
+只检查本机环境可运行：
+
+    powershell -ExecutionPolicy Bypass -File scripts/check_build_env.ps1
+
+清理本地构建和打包结果可双击 `scripts/clean_build.bat`。如果 MSYS2 不在默认位置，
+可在 PowerShell 中传入 `-Msys2Root`：
+
+    .\scripts\build_windows_portable.ps1 -Msys2Root D:\msys64
+
+---
+
+# 上游项目说明
 
 ## About
 

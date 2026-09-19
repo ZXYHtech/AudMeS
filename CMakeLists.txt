@@ -48,6 +48,7 @@ endif()
 
 if (MINGW)
 	execute_process(COMMAND bash -c "wx-config --prefix | tr -d '\n'" OUTPUT_VARIABLE MINGW_DIR)
+	string(STRIP "${MINGW_DIR}" MINGW_DIR)
 	message("wxWidgets dir settings: ${MINGW_DIR}")
 endif()
 
@@ -118,8 +119,8 @@ if (MINGW)
 endif()
 
 set(CPACK_PACKAGE_VERSION_MAJOR "2026")
-set(CPACK_PACKAGE_VERSION_MINOR "05")
-set(CPACK_PACKAGE_VERSION_PATCH "14")
+set(CPACK_PACKAGE_VERSION_MINOR "09")
+set(CPACK_PACKAGE_VERSION_PATCH "18")
 
 if (${CMAKE_HOST_SYSTEM_NAME} MATCHES "Linux")
 	install(TARGETS ${PROJECT_NAME} DESTINATION "bin")
@@ -145,24 +146,39 @@ if (MINGW)
 	install(TARGETS ${PROJECT_NAME} DESTINATION .)
 	install(FILES "${CMAKE_SOURCE_DIR}/README.md" DESTINATION .)
 	install(FILES "${CMAKE_SOURCE_DIR}/NEWS" RENAME "NEWS.txt" DESTINATION .)
-	# add runtime libraries - static linking does not work with wxWidgets binaries
-	install(FILES "${MINGW_DIR}/bin/libgcc_s_seh-1.dll" DESTINATION .)
-	install(FILES "${MINGW_DIR}/bin/libstdc++-6.dll" DESTINATION .)
-	install(FILES "${MINGW_DIR}/bin/libwinpthread-1.dll" DESTINATION .)
-	install(FILES "${MINGW_DIR}/bin/wxbase32u_gcc_custom.dll" DESTINATION .)
-	install(FILES "${MINGW_DIR}/bin/wxmsw32u_core_gcc_custom.dll" DESTINATION .)
-	install(FILES "${MINGW_DIR}/bin/liblzma-5.dll" DESTINATION .)
-	install(FILES "${MINGW_DIR}/bin/zlib1.dll" DESTINATION .)
-	install(FILES "${MINGW_DIR}/bin/libjpeg-8.dll" DESTINATION .)
-	install(FILES "${MINGW_DIR}/bin/libpcre2-16-0.dll" DESTINATION .)
-	install(FILES "${MINGW_DIR}/bin/libpng16-16.dll" DESTINATION .)
-	install(FILES "${MINGW_DIR}/bin/libtiff-6.dll" DESTINATION .)
-	install(FILES "${MINGW_DIR}/bin/libdeflate.dll" DESTINATION .)
-	install(FILES "${MINGW_DIR}/bin/libjbig-0.dll" DESTINATION .)
-	install(FILES "${MINGW_DIR}/bin/libLerc.dll" DESTINATION .)
-	install(FILES "${MINGW_DIR}/bin/libzstd.dll" DESTINATION .)
-	install(FILES "${MINGW_DIR}/bin/libwebp-7.dll" DESTINATION .)
-	install(FILES "${MINGW_DIR}/bin/libsharpyuv-0.dll" DESTINATION .)
+	if (EXISTS "${CMAKE_SOURCE_DIR}/guide_assets")
+		install(DIRECTORY "${CMAKE_SOURCE_DIR}/guide_assets/" DESTINATION guide_assets)
+	endif()
+	# Add the known runtime libraries. Package names can change between MSYS2
+	# updates, so a missing optional DLL must not stop CPack. The local Windows
+	# build script performs a recursive dependency scan and completes the bundle.
+	set(MINGW_RUNTIME_DLLS
+		libgcc_s_seh-1.dll
+		libstdc++-6.dll
+		libwinpthread-1.dll
+		wxbase32u_gcc_custom.dll
+		wxmsw32u_core_gcc_custom.dll
+		liblzma-5.dll
+		zlib1.dll
+		libjpeg-8.dll
+		libpcre2-16-0.dll
+		libpng16-16.dll
+		libtiff-6.dll
+		libdeflate.dll
+		libjbig-0.dll
+		libLerc.dll
+		libzstd.dll
+		libwebp-7.dll
+		libsharpyuv-0.dll
+		)
+	foreach(MINGW_RUNTIME_DLL IN LISTS MINGW_RUNTIME_DLLS)
+		set(MINGW_RUNTIME_PATH "${MINGW_DIR}/bin/${MINGW_RUNTIME_DLL}")
+		if (EXISTS "${MINGW_RUNTIME_PATH}")
+			install(FILES "${MINGW_RUNTIME_PATH}" DESTINATION .)
+		else()
+			message(WARNING "Runtime DLL not found during configure: ${MINGW_RUNTIME_PATH}")
+		endif()
+	endforeach()
 	set(CPACK_GENERATOR "ZIP")
 endif()
 
