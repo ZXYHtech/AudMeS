@@ -63,7 +63,7 @@ foreach ($candidate in Get-Msys2CandidateRoots) {
 if (-not $resolvedRoot) {
     throw @'
 未找到 64 位 MSYS2。请先安装 MSYS2，并安装以下软件包：
-  pacman -S --needed base-devel git mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-make mingw-w64-x86_64-wxwidgets3.2
+  pacman -S --needed base-devel git mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-make mingw-w64-x86_64-wxwidgets3.2-msw
 如果安装在非默认目录，请使用 -Msys2Root 指定路径，例如：-Msys2Root D:\msys64
 '@
 }
@@ -108,7 +108,7 @@ if ($missingTools.Count -gt 0) {
 MSYS2 已找到，但构建工具不完整：
   - $details
 请在 MSYS2 MINGW64 终端执行：
-  pacman -S --needed base-devel git mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-make mingw-w64-x86_64-wxwidgets3.2
+  pacman -S --needed base-devel git mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-make mingw-w64-x86_64-wxwidgets3.2-msw
 "@
 }
 
