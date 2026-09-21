@@ -32,7 +32,7 @@
 #ifndef AUDMES_H
 #define AUDMES_H
 
-#define AUDMES_VERSION_STRING "2026-09-18-cn-preview1"
+#define AUDMES_VERSION_STRING "2026-09-21-cn-preview2"
 
 class MainFrame : public wxFrame {
   wxDECLARE_CLASS(MainFrame);
@@ -96,6 +96,9 @@ class MainFrame : public wxFrame {
   void OnSARepeat(wxCommandEvent& event);
   void OnSAAudioSetup(wxCommandEvent& event);
   void OnDeviceRefresh(wxCommandEvent& event);
+  void OnHomeFFT(wxCommandEvent& event);
+  void OnHomeSweep(wxCommandEvent& event);
+  void OnHomeSA(wxCommandEvent& event);
   void DrawFreqResponse(void);
   void CalcFreqResponse(void);
   void DrawOscilloscope(void);
@@ -235,10 +238,17 @@ class MainFrame : public wxFrame {
   wxStaticText* label_device_status;
   wxStaticText* label_device_detail;
   wxStaticText* label_home_hint;
+  wxStaticText* label_loopback_status;
+  wxStaticText* label_current_dut;
+  wxStaticText* label_latest_result;
   wxButton* button_device_refresh;
+  wxButton* button_home_fft;
+  wxButton* button_home_sweep;
+  wxButton* button_home_sa;
   wxStaticText* label_thd_value;
   wxStaticText* label_fft_freq_value;
   wxStaticText* label_fft_mag_value;
+  wxStaticText* label_harmonics_value;
 
   wxStaticText* label_sa_step_counter;
   wxStaticText* label_sa_step_title;
@@ -251,6 +261,7 @@ class MainFrame : public wxFrame {
   wxButton* button_sa_repeat;
   wxButton* button_sa_audio_setup;
   int m_saStep;
+  bool m_saStarted;
   bool m_e4x4Detected;
   wxString m_e4x4Name;
 };

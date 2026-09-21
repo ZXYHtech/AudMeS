@@ -104,29 +104,29 @@ Codex 执行通道会阻塞 GCC 启动汇编器的子进程链，下面的完整
 
 ### 总览页
 
-- [ ] 顶部设备状态
-- [ ] E4x4 Pre / 当前输入 / 当前输出 / 采样率
-- [ ] Loopback 校准状态
-- [ ] 当前 DUT
-- [ ] 快速进入 FFT / THD / Sweep / 一键测试
-- [ ] 最近一次测试摘要
+- [x] 顶部设备状态
+- [x] E4x4 Pre / 当前输入 / 当前输出 / 采样率
+- [x] Loopback 校准状态
+- [x] 当前 DUT
+- [x] 快速进入 FFT / THD / Sweep / 一键测试
+- [x] 最近一次测试摘要
 
 ### FFT / THD
 
-- [ ] 基波频率
-- [ ] 基波幅度
-- [ ] H2 / H3 / H4 / H5
-- [ ] THD
+- [x] 基波频率
+- [x] 基波幅度
+- [x] H2 / H3 / H4 / H5
+- [x] THD
 - [ ] THD+N
 - [ ] SINAD
 - [ ] SNR
 - [ ] Noise Floor
 - [ ] Peak Hold
-- [ ] Average
-- [ ] Hann / Blackman-Harris 等窗函数
-- [ ] 32768 / 65536 / 131072 / 262144 点 FFT
+- [x] Average
+- [x] Hann / Blackman-Harris 等窗函数
+- [x] 32768 / 65536 / 131072 / 262144 点 FFT
 - [ ] dBFS / Vrms 显示模式
-- [ ] CSV 导出
+- [x] CSV 导出
 
 ### Sweep
 

@@ -83,6 +83,9 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
   EVT_BUTTON(ID_SA_REPEAT, MainFrame::OnSARepeat)
   EVT_BUTTON(ID_SA_AUDIO_SETUP, MainFrame::OnSAAudioSetup)
   EVT_BUTTON(ID_DEVICE_REFRESH, MainFrame::OnDeviceRefresh)
+  EVT_BUTTON(ID_HOME_FFT, MainFrame::OnHomeFFT)
+  EVT_BUTTON(ID_HOME_SWEEP, MainFrame::OnHomeSweep)
+  EVT_BUTTON(ID_HOME_SA, MainFrame::OnHomeSA)
 wxEND_EVENT_TABLE()
 
 float* g_OscBuffer_Left;
@@ -231,16 +234,17 @@ MainFrame::MainFrame(wxWindow* parent, int id, const wxString& title, const wxPo
 
   /* Spectrum analyzer */
   label_5 = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("窗函数"));
-  const wxString choice_fft_choices[] = {wxT("Rect"), wxT("Hanning"), wxT("Blackman"),
-                                         wxT("BlackHarr")};
+  const wxString choice_fft_choices[] = {wxT("Rect"), wxT("Hann"), wxT("Blackman"),
+                                         wxT("Blackman-Harris")};
   choice_fft = new wxChoice(notebook_1_spe, ID_FFTWINDOW, wxDefaultPosition, wxDefaultSize, 4,
                             choice_fft_choices, 0);
 
   label_9 = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("FFT 点数"));
-  const wxString choice_fftlength_choices[] = {wxT("128"),   wxT("256"),  wxT("512"),  wxT("1024"),
-                                               wxT("2048"),  wxT("4096"), wxT("8192"), wxT("16384"),
-                                               wxT("32768"), wxT("65536")};
-  choice_fftlength = new wxChoice(notebook_1_spe, ID_XSCALE, wxDefaultPosition, wxDefaultSize, 10,
+  const wxString choice_fftlength_choices[] = {
+      wxT("128"),   wxT("256"),   wxT("512"),   wxT("1024"),  wxT("2048"),
+      wxT("4096"),  wxT("8192"),  wxT("16384"), wxT("32768"), wxT("65536"),
+      wxT("131072"), wxT("262144")};
+  choice_fftlength = new wxChoice(notebook_1_spe, ID_XSCALE, wxDefaultPosition, wxDefaultSize, 12,
                                   choice_fftlength_choices, 0);
 
   label_rx = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("频率范围 [Hz]"));
@@ -269,6 +273,8 @@ MainFrame::MainFrame(wxWindow* parent, int id, const wxString& title, const wxPo
   label_fft_freq_value = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("基波  -- Hz"));
   label_fft_mag_value = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("幅度  -- dBFS"));
   label_thd_value = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("THD  -- %"));
+  label_harmonics_value = new wxStaticText(
+      notebook_1_spe, wxID_ANY, wxT("H2  -- dBc · H3  -- dBc · H4  -- dBc · H5  -- dBc"));
 
 
   /* Frequency response */
@@ -344,6 +350,41 @@ void MainFrame::BuildInstrumentHome() {
   deviceBox->Add(button_device_refresh, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
   root->Add(deviceBox, 0, wxLEFT | wxRIGHT | wxEXPAND, 24);
 
+  wxBoxSizer* statusRow = new wxBoxSizer(wxHORIZONTAL);
+  wxStaticBoxSizer* loopbackBox =
+      new wxStaticBoxSizer(wxVERTICAL, notebook_1_home, wxT("Loopback 校准"));
+  label_loopback_status =
+      new wxStaticText(notebook_1_home, wxID_ANY, wxT("○ 未校准 · 请先完成音频接口直接回环"));
+  loopbackBox->Add(label_loopback_status, 0, wxALL, 10);
+  statusRow->Add(loopbackBox, 1, wxRIGHT | wxEXPAND, 6);
+
+  wxStaticBoxSizer* dutBox =
+      new wxStaticBoxSizer(wxVERTICAL, notebook_1_home, wxT("当前 DUT"));
+  label_current_dut =
+      new wxStaticText(notebook_1_home, wxID_ANY, wxT("SA-440F5 · 尚未开始测试"));
+  dutBox->Add(label_current_dut, 0, wxALL, 10);
+  statusRow->Add(dutBox, 1, wxLEFT | wxEXPAND, 6);
+  root->Add(statusRow, 0, wxLEFT | wxRIGHT | wxTOP | wxEXPAND, 24);
+
+  wxStaticBoxSizer* quickBox =
+      new wxStaticBoxSizer(wxVERTICAL, notebook_1_home, wxT("快速开始"));
+  wxBoxSizer* quickRow = new wxBoxSizer(wxHORIZONTAL);
+  button_home_fft = new wxButton(notebook_1_home, ID_HOME_FFT, wxT("进入 FFT / THD"));
+  button_home_sweep = new wxButton(notebook_1_home, ID_HOME_SWEEP, wxT("进入 Sweep 扫频"));
+  button_home_sa = new wxButton(notebook_1_home, ID_HOME_SA, wxT("进入 SA-440F5 一键测试"));
+  quickRow->Add(button_home_fft, 1, wxRIGHT | wxEXPAND, 6);
+  quickRow->Add(button_home_sweep, 1, wxLEFT | wxRIGHT | wxEXPAND, 6);
+  quickRow->Add(button_home_sa, 1, wxLEFT | wxEXPAND, 6);
+  quickBox->Add(quickRow, 0, wxALL | wxEXPAND, 10);
+  root->Add(quickBox, 0, wxLEFT | wxRIGHT | wxTOP | wxEXPAND, 24);
+
+  wxStaticBoxSizer* latestBox =
+      new wxStaticBoxSizer(wxVERTICAL, notebook_1_home, wxT("最近一次测试摘要"));
+  label_latest_result = new wxStaticText(
+      notebook_1_home, wxID_ANY, wxT("暂无测量结果 · 进入 FFT / THD 并开始采集后自动更新"));
+  latestBox->Add(label_latest_result, 0, wxALL | wxEXPAND, 10);
+  root->Add(latestBox, 0, wxLEFT | wxRIGHT | wxTOP | wxEXPAND, 24);
+
   wxStaticBoxSizer* workflowBox =
       new wxStaticBoxSizer(wxVERTICAL, notebook_1_home, wxT("推荐工作流"));
   label_home_hint = new wxStaticText(
@@ -400,6 +441,7 @@ wxBitmap MainFrame::MakeGuidePlaceholder(const wxString& title, const wxString& 
 
 void MainFrame::BuildSA440F5Panel() {
   m_saStep = 0;
+  m_saStarted = false;
   wxBoxSizer* root = new wxBoxSizer(wxVERTICAL);
 
   wxBoxSizer* top = new wxBoxSizer(wxHORIZONTAL);
@@ -466,6 +508,7 @@ void MainFrame::ApplyInstrumentTheme(wxWindow* root) {
   const wxColour accent(63, 169, 225);
 
   if (dynamic_cast<wxPanel*>(root) || root == this) root->SetBackgroundColour(panel);
+  if (wxStaticBox* box = dynamic_cast<wxStaticBox*>(root)) box->SetForegroundColour(text);
   if (wxStaticText* st = dynamic_cast<wxStaticText*>(root)) st->SetForegroundColour(text);
   if (wxButton* bt = dynamic_cast<wxButton*>(root)) {
     bt->SetForegroundColour(text);
@@ -533,6 +576,11 @@ void MainFrame::UpdateSA440F5Step() {
 
   label_sa_step_counter->SetLabel(wxString::Format(wxT("步骤 %d / %d"), m_saStep + 1, count));
   label_sa_step_title->SetLabel(steps[m_saStep].title);
+  if (m_saStarted) {
+    label_current_dut->SetLabel(
+        wxString::Format(wxT("SA-440F5 · 步骤 %d / %d · %s"), m_saStep + 1, count,
+                         steps[m_saStep].title));
+  }
   label_sa_step_body->SetLabel(steps[m_saStep].body);
   label_sa_step_body->Wrap(420);
   gauge_sa_progress->SetValue(m_saStep + 1);
@@ -590,8 +638,9 @@ void MainFrame::AutoDetectE4x4(bool showMessage) {
           wxString::Format(wxT("TOPPING 音频设备已连接 · %u Hz · 型号待确认"), m_SamplingFreq));
     }
 
-    label_device_detail->SetLabel(
-        wxString::Format(wxT("%s · %u Hz · 输入/输出自动绑定"), m_e4x4Name.c_str(), m_SamplingFreq));
+    label_device_detail->SetLabel(wxString::Format(
+        wxT("%s · 输入 #%u · 输出 #%u · %u Hz"), m_e4x4Name.c_str(), m_RecordDev,
+        m_PlayDev, m_SamplingFreq));
     if (showMessage)
       wxMessageBox(
           wxString::Format(wxT("已识别：%s\n采样率：%u Hz\n%s"), m_e4x4Name.c_str(),
@@ -628,17 +677,26 @@ void MainFrame::OnSAStart(wxCommandEvent& WXUNUSED(event)) {
   txt_freq_l->SetValue(wxT("1000"));
   txt_freq_r->SetValue(wxT("1000"));
   m_saStep = 0;
+  m_saStarted = true;
   AutoDetectE4x4(false);
   UpdateSA440F5Step();
 }
 
 void MainFrame::OnSAPrev(wxCommandEvent& WXUNUSED(event)) {
+  m_saStarted = true;
   if (m_saStep > 0) --m_saStep;
   UpdateSA440F5Step();
 }
 
 void MainFrame::OnSANext(wxCommandEvent& WXUNUSED(event)) {
-  if (m_saStep < 6) ++m_saStep;
+  if (m_saStep == 6) {
+    m_saStarted = false;
+    label_current_dut->SetLabel(wxT("SA-440F5 · 向导已完成 · 等待结果复核"));
+    frame_1_statusbar->SetStatusText(wxT("SA-440F5 测试向导已完成，请保存数据并复核结论"));
+    return;
+  }
+  m_saStarted = true;
+  ++m_saStep;
   UpdateSA440F5Step();
 }
 
@@ -650,6 +708,12 @@ void MainFrame::OnSAAudioSetup(wxCommandEvent& WXUNUSED(event)) {
 }
 
 void MainFrame::OnDeviceRefresh(wxCommandEvent& WXUNUSED(event)) { AutoDetectE4x4(true); }
+
+void MainFrame::OnHomeFFT(wxCommandEvent& WXUNUSED(event)) { notebook_1->SetSelection(1); }
+
+void MainFrame::OnHomeSweep(wxCommandEvent& WXUNUSED(event)) { notebook_1->SetSelection(2); }
+
+void MainFrame::OnHomeSA(wxCommandEvent& WXUNUSED(event)) { notebook_1->SetSelection(3); }
 
 void MainFrame::do_layout() {
   // begin wxGlade: MainFrame::do_layout
@@ -858,10 +922,12 @@ void MainFrame::do_layout() {
   label_fft_freq_value->SetFont(metricFont);
   label_fft_mag_value->SetFont(metricFont);
   label_thd_value->SetFont(metricFont);
+  label_harmonics_value->SetFont(metricFont);
   sizer_spe_metrics->Add(label_fft_freq_value, 1, wxALL | wxALIGN_CENTER_VERTICAL, 8);
   sizer_spe_metrics->Add(label_fft_mag_value, 1, wxALL | wxALIGN_CENTER_VERTICAL, 8);
   sizer_spe_metrics->Add(label_thd_value, 1, wxALL | wxALIGN_CENTER_VERTICAL, 8);
   sizer_spe_9->Add(sizer_spe_metrics, 0, wxLEFT | wxRIGHT | wxEXPAND, 8);
+  sizer_spe_9->Add(label_harmonics_value, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 16);
   sizer_spe_9->Add(button_spe_start, 0, wxALL | wxALIGN_CENTER_HORIZONTAL | wxALIGN_CENTER_VERTICAL,
                    8);
   notebook_1_spe->SetAutoLayout(true);
@@ -1306,7 +1372,7 @@ void MainFrame::DrawSpectrum(void) {
    */
   double freq = 0.0;
   double thd = 0.0;
-  double thdval[10] = {1.0E-6};
+  double thdval[10] = {0.0};
   if (fmax > 0 && dmax > 0.00003) {
     freq = (double)fmax * m_SamplingFreq / nsampl;
     for (int i = 0; i < 10; i++) {
@@ -1323,9 +1389,25 @@ void MainFrame::DrawSpectrum(void) {
 
   /* display base frequency, magnitude and distortion */
   const double magnitudeDb = thdval[0] > 0.0 ? 20.0 * log10(thdval[0]) : -150.0;
+  double harmonicDbc[4] = {-150.0, -150.0, -150.0, -150.0};
+  if (thdval[0] > 0.0) {
+    for (int i = 0; i < 4; ++i) {
+      if (thdval[i + 1] > 0.0) harmonicDbc[i] = 20.0 * log10(thdval[i + 1] / thdval[0]);
+    }
+  }
   label_fft_freq_value->SetLabel(wxString::Format(wxT("基波  %.2f Hz"), freq));
   label_fft_mag_value->SetLabel(wxString::Format(wxT("幅度  %.2f dBFS"), magnitudeDb));
   label_thd_value->SetLabel(wxString::Format(wxT("THD  %.6f %%"), thd));
+  label_harmonics_value->SetLabel(wxString::Format(
+      wxT("H2  %.2f dBc · H3  %.2f dBc · H4  %.2f dBc · H5  %.2f dBc"), harmonicDbc[0],
+      harmonicDbc[1], harmonicDbc[2], harmonicDbc[3]));
+  if (freq > 0.0) {
+    label_latest_result->SetLabel(wxString::Format(
+        wxT("FFT / THD · 基波 %.2f Hz · 幅度 %.2f dBFS · THD %.6f %% · %u Hz"), freq,
+        magnitudeDb, thd, m_SamplingFreq));
+  } else {
+    label_latest_result->SetLabel(wxT("FFT / THD · 暂未检测到高于 -90 dBFS 的有效基波"));
+  }
   wxString freqency;
   freqency.Printf(wxT("基波 %.2f Hz · 幅度 %.2f dBFS · THD %.6f %% · 平均 %d/%d"), freq,
                   magnitudeDb, thd, m_SMASpeLeft->GetNumSummed(1),
