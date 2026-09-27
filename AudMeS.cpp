@@ -446,6 +446,7 @@ wxBitmap MainFrame::MakeGuidePlaceholder(const wxString& title, const wxString& 
   dc.SetPen(wxPen(wxColour(70, 155, 210), 2));
 
   wxRect outer(12, 12, size.x - 24, size.y - 24);
+  dc.SetBrush(wxBrush(wxColour(31, 40, 51)));
   dc.DrawRoundedRectangle(outer, 10);
 
   wxFont head = wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT);
@@ -464,6 +465,7 @@ wxBitmap MainFrame::MakeGuidePlaceholder(const wxString& title, const wxString& 
   wxRect a(30, y, boxW, 70);
   wxRect b(60 + boxW, y, boxW, 70);
   wxRect c(90 + boxW * 2, y, boxW, 70);
+  dc.SetBrush(wxBrush(wxColour(42, 55, 69)));
   dc.DrawRoundedRectangle(a, 8);
   dc.DrawRoundedRectangle(b, 8);
   dc.DrawRoundedRectangle(c, 8);
