@@ -78,7 +78,7 @@ int main() {
     samples[i] = 0.5 * std::sin(2.0 * pi * 1000.0 * i / size) * window;
     windowPower += window * window;
   }
-  ok &= Check(fft_double(size, 0, samples.data(), NULL, real.data(), imag.data()) == 1,
+  ok &= Check(fft_double(size, 0, samples.data(), nullptr, real.data(), imag.data()) == 1,
               "Synthetic FFT failed");
   std::vector<double> fftPower(size / 2, 0.0);
   for (int bin = 1; bin < size / 2; ++bin) {

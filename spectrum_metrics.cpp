@@ -1,6 +1,7 @@
 #include "spectrum_metrics.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cmath>
 
 namespace {
@@ -31,7 +32,7 @@ SpectrumMetrics AnalyzeSpectrum(const std::vector<double>& powerBins, int fftSiz
                                 double sampleRate, int windowChoice) {
   SpectrumMetrics result;
   if (fftSize < 128 || sampleRate <= 0.0 ||
-      powerBins.size() != static_cast<size_t>(fftSize / 2)) return result;
+      powerBins.size() != static_cast<std::size_t>(fftSize / 2)) return result;
 
   const double binHz = sampleRate / fftSize;
   const int first = std::max(1, static_cast<int>(std::ceil(20.0 / binHz)));
@@ -117,7 +118,7 @@ SpectrumMetrics AnalyzeSpectrum(const std::vector<double>& powerBins, int fftSiz
     result.snrDb = 10.0 * std::log10(peakPower / noisePower);
   }
   if (!noiseBins.empty()) {
-    const size_t middle = noiseBins.size() / 2;
+    const std::size_t middle = noiseBins.size() / 2;
     std::nth_element(noiseBins.begin(), noiseBins.begin() + middle, noiseBins.end());
     const double medianPower = noiseBins[middle];
     if (medianPower > 0.0) {
