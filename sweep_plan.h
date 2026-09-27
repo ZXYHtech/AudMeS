@@ -8,4 +8,20 @@
 std::vector<double> BuildSweepFrequencies(double startHz, double endHz, int points,
                                           bool logarithmic, double sampleRate);
 
+struct SweepAnalysis {
+  std::vector<double> levelsDb;
+  bool hasReference = false;
+  double referenceDb = 0.0;
+  bool hasLowCutoff = false;
+  double lowCutoffHz = 0.0;
+  bool hasHighCutoff = false;
+  double highCutoffHz = 0.0;
+};
+
+// Cutoffs are the first -3 dB crossings moving away from the 1 kHz reference.
+// Interpolation is logarithmic in frequency; missing crossings remain unset.
+SweepAnalysis AnalyzeSweepChannel(const std::vector<double>& frequencies,
+                                  const std::vector<double>& rms,
+                                  double referenceHz = 1000.0);
+
 #endif  // AUDMES_SWEEP_PLAN_H

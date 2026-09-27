@@ -42,6 +42,12 @@ class CtrlOScope : public wxControl {
   void SetTrack1(wxArrayDouble const& ardbl);
   void SetTrack2(wxArrayDouble const& ardbl);
   void SetTrackX(wxArrayDouble const& ardbl);
+  struct Marker {
+    double x;
+    wxString label;
+    wxColour color;
+  };
+  void SetMarkers(const std::vector<Marker>& markers) { m_markers = markers; }
   void SetInterp(const CtrlOScope::Interpolation interp);
   void SetNumOfVerticals(int num) { m_NumberOfVerticals = num; };
 
@@ -55,6 +61,7 @@ class CtrlOScope : public wxControl {
   wxArrayDouble m_points1;
   wxArrayDouble m_points2;
   wxArrayDouble m_pointsX;
+  std::vector<Marker> m_markers;
   double m_MaxXValue;
   double m_MinXValue;
   double m_MaxYValue;

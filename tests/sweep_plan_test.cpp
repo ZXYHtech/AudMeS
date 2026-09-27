@@ -31,5 +31,35 @@ int main() {
     std::cerr << "Sweep input validation failed\n";
     return 1;
   }
+  const double minusSix = std::pow(10.0, -6.0 / 20.0);
+  const std::vector<double> frequencies = {100.0, 1000.0, 10000.0};
+  const SweepAnalysis bandpass =
+      AnalyzeSweepChannel(frequencies, {minusSix, 1.0, minusSix});
+  if (!bandpass.hasReference || !bandpass.hasLowCutoff || !bandpass.hasHighCutoff ||
+      std::fabs(bandpass.lowCutoffHz - std::sqrt(100.0 * 1000.0)) > 1e-6 ||
+      std::fabs(bandpass.highCutoffHz - std::sqrt(1000.0 * 10000.0)) > 1e-6) {
+    std::cerr << "Sweep -3 dB interpolation failed\n";
+    return 1;
+  }
+  const SweepAnalysis interpolated = AnalyzeSweepChannel(
+      {100.0, 500.0, 2000.0, 10000.0}, {minusSix, 1.0, 1.0, minusSix});
+  if (!interpolated.hasReference || std::fabs(interpolated.referenceDb) > 1e-9 ||
+      !interpolated.hasLowCutoff || !interpolated.hasHighCutoff) {
+    std::cerr << "Unsampled reference interpolation failed\n";
+    return 1;
+  }
+  if (AnalyzeSweepChannel({2000.0, 10000.0}, {1.0, minusSix}).hasReference ||
+      AnalyzeSweepChannel({100.0, 1000.0}, {1.0, 0.0}).hasReference ||
+      AnalyzeSweepChannel({1000.0, 1000.0}, {1.0, 1.0}).hasReference ||
+      AnalyzeSweepChannel({100.0, 1000.0}, {1.0}).hasReference) {
+    std::cerr << "Invalid sweep reference handling failed\n";
+    return 1;
+  }
+  const SweepAnalysis flat = AnalyzeSweepChannel({100.0, 1000.0, 10000.0},
+                                                 {1.0, 1.0, 1.0});
+  if (!flat.hasReference || flat.hasLowCutoff || flat.hasHighCutoff) {
+    std::cerr << "Flat response must not invent cutoff points\n";
+    return 1;
+  }
   return 0;
 }

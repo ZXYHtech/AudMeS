@@ -268,27 +268,39 @@ void CtrlOScope::PaintGraph(wxDC& dc) {
     if ((int)ihigh < ((int)m_pointsX.GetCount() - 1)) ihigh++;
 
     // left channel
-    if (m_interp == SINC) {
+    if (m_points1.GetCount() == m_pointsX.GetCount() && m_interp == SINC) {
       wxArrayDouble xdata;
       wxArrayDouble ydata;
       sinc_interpolate(xdata, ydata, m_pointsX, m_points1);
       PaintTrack(dc, ilow, ihigh * 5 - 1, xstep, m_trColor, xdata, ydata);
       xdata.Clear();
       ydata.Clear();
-    } else {
+    } else if (m_points1.GetCount() == m_pointsX.GetCount()) {
       PaintTrack(dc, ilow, ihigh, xstep, m_trColor, m_pointsX, m_points1);
     }
 
     // right channel
-    if (m_interp == SINC) {
+    if (m_points2.GetCount() == m_pointsX.GetCount() && m_interp == SINC) {
       wxArrayDouble xdata;
       wxArrayDouble ydata;
       sinc_interpolate(xdata, ydata, m_pointsX, m_points2);
       PaintTrack(dc, ilow, ihigh * 5 - 1, xstep, m_tr2Color, xdata, ydata);
       xdata.Clear();
       ydata.Clear();
-    } else {
+    } else if (m_points2.GetCount() == m_pointsX.GetCount()) {
       PaintTrack(dc, ilow, ihigh, xstep, m_tr2Color, m_pointsX, m_points2);
+    }
+    for (size_t i = 0; i < m_markers.size(); ++i) {
+      const Marker& marker = m_markers[i];
+      if (marker.x < m_MinXValue || marker.x > m_MaxXValue) continue;
+      const double fraction = m_LogX ?
+          log10(marker.x / m_MinXValue) / log10(m_MaxXValue / m_MinXValue) :
+          (marker.x - m_MinXValue) / (m_MaxXValue - m_MinXValue);
+      const int xpos = ldist + static_cast<int>(fraction * (rec.width - ldist - rdist));
+      dc.SetPen(wxPen(marker.color, 1, wxPENSTYLE_SHORT_DASH));
+      dc.DrawLine(xpos, tdist, xpos, rec.height - bdist);
+      dc.SetTextForeground(marker.color);
+      dc.DrawText(marker.label, xpos + 3, tdist + 4 + static_cast<int>(i % 4) * 14);
     }
   }
 }
@@ -304,7 +316,8 @@ void CtrlOScope::PaintTrack(wxDC& dc, size_t from, size_t to, double xstep, cons
     if (m_LogX)
       xpos = ldist + xstep * log10(m_pointsX.Item(i) / m_MinXValue);
     else
-      xpos = ldist + xpoints.Item(i) * xstep * m_NumberOfVerticals / (m_MaxXValue - m_MinXValue);
+      xpos = ldist + (xpoints.Item(i) - m_MinXValue) * xstep * m_NumberOfVerticals /
+                         (m_MaxXValue - m_MinXValue);
     // find the point in the graph and limit to the graph area
     double ydatapoint = ypoints.Item(i);
     if (ydatapoint > m_MaxYValue) ydatapoint = m_MaxYValue;

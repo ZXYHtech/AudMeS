@@ -20,3 +20,68 @@ std::vector<double> BuildSweepFrequencies(double startHz, double endHz, int poin
   frequencies.back() = endHz;
   return frequencies;
 }
+
+namespace {
+double InterpolateLog(double x0, double y0, double x1, double y1, double x) {
+  const double fraction = std::log(x / x0) / std::log(x1 / x0);
+  return y0 + (y1 - y0) * fraction;
+}
+
+double CrossingHz(double x0, double y0, double x1, double y1) {
+  const double fraction = (-3.0 - y0) / (y1 - y0);
+  return x0 * std::pow(x1 / x0, fraction);
+}
+}  // namespace
+
+SweepAnalysis AnalyzeSweepChannel(const std::vector<double>& frequencies,
+                                  const std::vector<double>& rms, double referenceHz) {
+  SweepAnalysis result;
+  if (frequencies.size() != rms.size() || frequencies.empty() ||
+      !std::isfinite(referenceHz) || referenceHz <= 0.0) return result;
+  for (size_t i = 0; i < frequencies.size(); ++i) {
+    if (!std::isfinite(frequencies[i]) || frequencies[i] <= 0.0 ||
+        (i && frequencies[i] <= frequencies[i - 1])) return SweepAnalysis();
+    const double value = std::isfinite(rms[i]) && rms[i] > 0.0 ?
+        20.0 * std::log10(rms[i]) : -150.0;
+    result.levelsDb.push_back(value);
+  }
+  if (referenceHz < frequencies.front() || referenceHz > frequencies.back()) return result;
+
+  size_t referenceIndex = 0;
+  while (referenceIndex < frequencies.size() && frequencies[referenceIndex] < referenceHz)
+    ++referenceIndex;
+  if (referenceIndex < frequencies.size() && frequencies[referenceIndex] == referenceHz) {
+    if (!std::isfinite(rms[referenceIndex]) || rms[referenceIndex] <= 0.0) return result;
+    result.referenceDb = result.levelsDb[referenceIndex];
+  } else {
+    if (referenceIndex == 0 || referenceIndex == frequencies.size() ||
+        !std::isfinite(rms[referenceIndex - 1]) || rms[referenceIndex - 1] <= 0.0 ||
+        !std::isfinite(rms[referenceIndex]) || rms[referenceIndex] <= 0.0) return result;
+    result.referenceDb = InterpolateLog(frequencies[referenceIndex - 1],
+        result.levelsDb[referenceIndex - 1], frequencies[referenceIndex],
+        result.levelsDb[referenceIndex], referenceHz);
+  }
+  result.hasReference = true;
+  std::vector<double> x = frequencies;
+  std::vector<double> y = result.levelsDb;
+  if (referenceIndex == frequencies.size() || frequencies[referenceIndex] != referenceHz) {
+    x.insert(x.begin() + referenceIndex, referenceHz);
+    y.insert(y.begin() + referenceIndex, result.referenceDb);
+  }
+  for (size_t i = 0; i < y.size(); ++i) y[i] -= result.referenceDb;
+  for (size_t i = referenceIndex; i > 0; --i) {
+    if (y[i - 1] <= -3.0 && y[i] > -3.0) {
+      result.lowCutoffHz = CrossingHz(x[i - 1], y[i - 1], x[i], y[i]);
+      result.hasLowCutoff = true;
+      break;
+    }
+  }
+  for (size_t i = referenceIndex; i + 1 < y.size(); ++i) {
+    if (y[i] > -3.0 && y[i + 1] <= -3.0) {
+      result.highCutoffHz = CrossingHz(x[i], y[i], x[i + 1], y[i + 1]);
+      result.hasHighCutoff = true;
+      break;
+    }
+  }
+  return result;
+}

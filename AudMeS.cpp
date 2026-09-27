@@ -48,6 +48,8 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
   EVT_TOGGLEBUTTON(ID_GENSTART, MainFrame::OnGenStart)
   EVT_TOGGLEBUTTON(ID_OSCSTART, MainFrame::OnOscStart)
   EVT_TOGGLEBUTTON(ID_FRMSTART, MainFrame::OnFrmStart)
+  EVT_CHECKBOX(ID_SWEEP_NORMALIZE, MainFrame::OnSweepViewChanged)
+  EVT_CHOICE(ID_SWEEP_CHANNEL, MainFrame::OnSweepViewChanged)
   EVT_MENU(wxID_ABOUT, MainFrame::OnAboutClick)
   EVT_MENU(wxID_EXIT, MainFrame::OnExitClick)
   EVT_CLOSE(MainFrame::OnClose)
@@ -300,6 +302,13 @@ MainFrame::MainFrame(wxWindow* parent, int id, const wxString& title, const wxPo
   const wxString sweepSpacingChoices[] = {wxT("对数"), wxT("线性")};
   choice_frm_spacing = new wxChoice(notebook_1_frm, wxID_ANY, wxDefaultPosition,
                                      wxDefaultSize, 2, sweepSpacingChoices);
+  checkbox_frm_normalize = new wxCheckBox(notebook_1_frm, ID_SWEEP_NORMALIZE,
+                                          wxT("以 1 kHz 归一化（0 dB）"));
+  const wxString sweepChannelChoices[] = {wxT("左右声道"), wxT("左声道"), wxT("右声道")};
+  choice_frm_channel = new wxChoice(notebook_1_frm, ID_SWEEP_CHANNEL, wxDefaultPosition,
+                                    wxDefaultSize, 3, sweepChannelChoices);
+  label_frm_summary = new wxStaticText(notebook_1_frm, wxID_ANY,
+                                       wxT("−3 dB 截止点：等待扫频数据"));
   button_frm_start = new wxToggleButton(notebook_1_frm, ID_FRMSTART, wxT("开始扫频"));
   window_1_frm = new CtrlOScope(notebook_1_frm, _T("Hz"), _T("dB"));
 
@@ -333,6 +342,8 @@ void MainFrame::set_properties() {
   choice_spe_ref->SetSelection(0);
   choice_spe_dbdiv->SetSelection(2);
   choice_frm_spacing->SetSelection(0);
+  choice_frm_channel->SetSelection(0);
+  checkbox_frm_normalize->SetValue(true);
   // end wxGlade
 }
 
@@ -990,9 +1001,14 @@ void MainFrame::do_layout() {
   sizer_frm_prop->Add(new wxStaticText(
       notebook_1_frm, wxID_ANY, wxT("实际 DUT 输入电压需经 Loopback 校准")),
       0, wxALL, 5);
+  sizer_frm_prop->Add(checkbox_frm_normalize, 0, wxALL, 5);
+  sizer_frm_prop->Add(new wxStaticText(notebook_1_frm, wxID_ANY, wxT("显示声道")),
+                       0, wxLEFT | wxRIGHT | wxTOP, 5);
+  sizer_frm_prop->Add(choice_frm_channel, 0, wxALL | wxEXPAND, 5);
   sizer_10_frm->Add(window_1_frm, 1, wxEXPAND, 0);
   sizer_10_frm->Add(sizer_frm_prop, 0, wxALL | wxEXPAND, 5);
   sizer_9_frm->Add(sizer_10_frm, 1, wxEXPAND, 0);
+  sizer_9_frm->Add(label_frm_summary, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 8);
   sizer_9_frm->Add(button_frm_start, 0, wxALL | wxALIGN_CENTER_HORIZONTAL | wxALIGN_CENTER_VERTICAL,
                    5);
   notebook_1_frm->SetAutoLayout(true);
@@ -1213,6 +1229,11 @@ void MainFrame::OnLoadFRM(wxCommandEvent& WXUNUSED(event)) {
     frm_lgains.Add(gainl);
     frm_rgains.Add(gainr);
   }
+  if (frm_freqs.GetCount() >= 2 && frm_freqs[0] > 0.0 &&
+      frm_freqs[frm_freqs.GetCount() - 1] > frm_freqs[0]) {
+    window_1_frm->SetXRange(frm_freqs[0], frm_freqs[frm_freqs.GetCount() - 1],
+                            choice_frm_spacing->GetSelection() == 0 ? 1 : 0);
+  }
   DrawFreqResponse();
   Refresh();
 }
@@ -1303,19 +1324,65 @@ void MainFrame::CalcFreqResponse() {
 }
 
 void MainFrame::DrawFreqResponse(void) {
-  wxArrayDouble left, right;
-  double tmpval;
-  left.Clear();
-  right.Clear();
-  for (unsigned int i = 0; i < frm_freqs.size(); i++) {
-    tmpval = frm_lgains[i];
-    left.Add(tmpval > 0.0 ? 20.0 * log10(tmpval) : -150.0);
-    tmpval = frm_rgains[i];
-    right.Add(tmpval > 0.0 ? 20.0 * log10(tmpval) : -150.0);
+  std::vector<double> frequencies, leftRms, rightRms;
+  for (size_t i = 0; i < frm_freqs.GetCount(); ++i) {
+    frequencies.push_back(frm_freqs[i]);
+    leftRms.push_back(frm_lgains[i]);
+    rightRms.push_back(frm_rgains[i]);
   }
-  window_1_frm->SetTrack1(left);
-  window_1_frm->SetTrack2(right);
+  const SweepAnalysis leftResult = AnalyzeSweepChannel(frequencies, leftRms);
+  const SweepAnalysis rightResult = AnalyzeSweepChannel(frequencies, rightRms);
+  const bool normalized = checkbox_frm_normalize->GetValue();
+  wxArrayDouble left, right;
+  for (size_t i = 0; i < frequencies.size(); ++i) {
+    if (i < leftResult.levelsDb.size())
+      left.Add(leftResult.levelsDb[i] -
+               (normalized && leftResult.hasReference ? leftResult.referenceDb : 0.0));
+    if (i < rightResult.levelsDb.size())
+      right.Add(rightResult.levelsDb[i] -
+                (normalized && rightResult.hasReference ? rightResult.referenceDb : 0.0));
+  }
+  const int channel = choice_frm_channel->GetSelection();
+  window_1_frm->SetTrack1(channel == 2 ? wxArrayDouble() : left);
+  window_1_frm->SetTrack2(channel == 1 ? wxArrayDouble() : right);
   window_1_frm->SetTrackX(frm_freqs);
+  const bool normalizedScale = normalized &&
+      (channel == 1 ? leftResult.hasReference :
+       channel == 2 ? rightResult.hasReference :
+                      leftResult.hasReference && rightResult.hasReference);
+  window_1_frm->SetYRange(normalizedScale ? -40.0 : -80.0,
+                          normalized ? 10.0 : 0.0, 0);
+
+  std::vector<CtrlOScope::Marker> markers;
+  wxString summary;
+  const SweepAnalysis results[] = {leftResult, rightResult};
+  const wxString names[] = {wxT("左"), wxT("右")};
+  const wxColour colors[] = {wxColour(255, 210, 70), wxColour(72, 215, 255)};
+  for (int c = 0; c < 2; ++c) {
+    if ((c == 0 && channel == 2) || (c == 1 && channel == 1)) continue;
+    const SweepAnalysis& result = results[c];
+    if (!summary.empty()) summary += wxT("   |   ");
+    if (!result.hasReference) {
+      summary += names[c] + wxT("：1 kHz 无有效数据，无法归一化或计算 −3 dB");
+      continue;
+    }
+    const wxString low = result.hasLowCutoff ?
+        wxString::Format(wxT("%.0f Hz"), result.lowCutoffHz) : wxT("范围内未见");
+    const wxString high = result.hasHighCutoff ?
+        wxString::Format(wxT("%.0f Hz"), result.highCutoffHz) : wxT("范围内未见");
+    summary += names[c] + wxT("：−3 dB 低端 ") + low + wxT("；高端 ") + high;
+    if (result.hasLowCutoff)
+      markers.push_back({result.lowCutoffHz, names[c] + wxT(" −3 dB"), colors[c]});
+    if (result.hasHighCutoff)
+      markers.push_back({result.highCutoffHz, names[c] + wxT(" −3 dB"), colors[c]});
+  }
+  window_1_frm->SetMarkers(markers);
+  label_frm_summary->SetLabel(summary.empty() ? wxT("−3 dB 截止点：等待扫频数据") : summary);
+  window_1_frm->Refresh();
+}
+
+void MainFrame::OnSweepViewChanged(wxCommandEvent& WXUNUSED(event)) {
+  DrawFreqResponse();
 }
 
 void MainFrame::DrawOscilloscope(void) {
@@ -1730,6 +1797,8 @@ void MainFrame::OnFrmStart(wxCommandEvent& WXUNUSED(event)) {
     window_1_frm->SetTrack1(wxArrayDouble());
     window_1_frm->SetTrack2(wxArrayDouble());
     window_1_frm->SetTrackX(wxArrayDouble());
+    window_1_frm->SetMarkers(std::vector<CtrlOScope::Marker>());
+    label_frm_summary->SetLabel(wxT("−3 dB 截止点：等待扫频数据"));
 
     frm_measure = 0;
     frm_running = true;

@@ -66,6 +66,7 @@ class MainFrame : public wxFrame {
   void OnGenStart(wxCommandEvent& event);
   void OnOscStart(wxCommandEvent& event);
   void OnFrmStart(wxCommandEvent& event);
+  void OnSweepViewChanged(wxCommandEvent& event);
   void OnAboutClick(wxCommandEvent& event);
   void OnExitClick(wxCommandEvent& event);
   void OnClose(wxCloseEvent& event);
@@ -203,6 +204,9 @@ class MainFrame : public wxFrame {
   wxTextCtrl* text_ctrl_frm_end;
   wxTextCtrl* text_ctrl_frm_level;
   wxChoice* choice_frm_spacing;
+  wxCheckBox* checkbox_frm_normalize;
+  wxChoice* choice_frm_channel;
+  wxStaticText* label_frm_summary;
   wxTextCtrl* text_ctrl2_frm;
   wxToggleButton* button_frm_start;
   CtrlOScope* window_1_frm;
