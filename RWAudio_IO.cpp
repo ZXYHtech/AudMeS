@@ -491,6 +491,10 @@ void RWAudio::SetTrigger(int channel, int edge, double level, double hyst, int p
 /*
  * Devices enumeration
  */
+std::string RWAudio::GetCurrentApiName() const {
+  return RtAudio::getApiName(m_AudioDriver->getCurrentApi());
+}
+
 int RWAudio::GetRWAudioDevices(RWAudioDevList *play, RWAudioDevList *record) {
   // Determine the number of devices available
   unsigned int devices = m_AudioDriver->getDeviceCount();

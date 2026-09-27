@@ -20,6 +20,8 @@ set(CPP_SOURCES
 	spectrum_metrics.h
 	sweep_plan.cpp
 	sweep_plan.h
+	loopback_reference.cpp
+	loopback_reference.h
 	event_ids.h
 	)
 
@@ -130,7 +132,7 @@ endif()
 
 set(CPACK_PACKAGE_VERSION_MAJOR "2026")
 set(CPACK_PACKAGE_VERSION_MINOR "09")
-set(CPACK_PACKAGE_VERSION_PATCH "18")
+set(CPACK_PACKAGE_VERSION_PATCH "27")
 
 if (${CMAKE_HOST_SYSTEM_NAME} MATCHES "Linux")
 	install(TARGETS ${PROJECT_NAME} DESTINATION "bin")

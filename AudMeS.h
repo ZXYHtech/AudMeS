@@ -28,12 +28,13 @@
 
 #include "CtrlOScope.h"
 #include "RWAudio_IO.h"
+#include "loopback_reference.h"
 #include "sma_2d.h"
 
 #ifndef AUDMES_H
 #define AUDMES_H
 
-#define AUDMES_VERSION_STRING "2026-09-21-cn-preview2"
+#define AUDMES_VERSION_STRING "2026-09-27-cn-preview3"
 
 class MainFrame : public wxFrame {
   wxDECLARE_CLASS(MainFrame);
@@ -68,6 +69,11 @@ class MainFrame : public wxFrame {
   void OnFrmStart(wxCommandEvent& event);
   void OnSweepViewChanged(wxCommandEvent& event);
   void OnCaptureLoopback(wxCommandEvent& event);
+  void OnSaveLoopback(wxCommandEvent& event);
+  void OnLoadLoopback(wxCommandEvent& event);
+  bool GetSelectedDeviceNames(unsigned int recordId, unsigned int playId,
+                              std::string* recordName, std::string* playName);
+  LoopbackReference CurrentLoopbackReference() const;
   bool CurrentSweepMatchesLoopback() const;
   void OnAboutClick(wxCommandEvent& event);
   void OnExitClick(wxCommandEvent& event);
@@ -211,6 +217,8 @@ class MainFrame : public wxFrame {
   wxChoice* choice_frm_output;
   wxCheckBox* checkbox_frm_correct;
   wxButton* button_frm_reference;
+  wxButton* button_frm_save_reference;
+  wxButton* button_frm_load_reference;
   wxStaticText* label_frm_calibration;
   wxStaticText* label_frm_summary;
   wxTextCtrl* text_ctrl2_frm;
@@ -241,6 +249,9 @@ class MainFrame : public wxFrame {
   int m_loopbackCaptureChannel;
   double m_loopbackLevelDbfs;
   wxString m_loopbackAt;
+  std::string m_loopbackApiName;
+  std::string m_loopbackRecordName;
+  std::string m_loopbackPlayName;
   std::vector<double> m_loopbackFrequencies;
   std::vector<double> m_loopbackRms;
   std::vector<double> frm_plan;

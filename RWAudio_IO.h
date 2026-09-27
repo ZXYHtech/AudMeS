@@ -49,6 +49,7 @@ class RWAudio {
   void SetTrigger(int channel, int edge, double level, double hyst, int pre);
 
   int GetRWAudioDevices(RWAudioDevList* play, RWAudioDevList* record);
+  std::string GetCurrentApiName() const;
   bool AutoDetectDevice(const std::vector<std::string>& nameHints, unsigned int* recordDev,
                         unsigned int* playDev, unsigned int* bestSampleRate,
                         std::string* matchedName);
