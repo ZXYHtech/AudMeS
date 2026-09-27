@@ -21,6 +21,9 @@ bool ValidateLoopbackReference(const LoopbackReference& reference, std::string* 
 bool LoopbackMatchesRoute(const LoopbackReference& reference, const std::string& api,
                           const std::string& recordDevice, const std::string& playDevice,
                           unsigned int sampleRate, int outputChannel, double levelDbfs);
+bool DifferentialLoopbackReady(const LoopbackReference& reference, const std::string& api,
+                               const std::string& recordDevice, const std::string& playDevice,
+                               unsigned int sampleRate);
 bool SerializeLoopbackReference(const LoopbackReference& reference, std::string* contents,
                                 std::string* error);
 bool ParseLoopbackReference(const std::string& contents, LoopbackReference* reference,

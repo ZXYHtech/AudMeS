@@ -111,6 +111,8 @@ class MainFrame : public wxFrame {
   void OnSANext(wxCommandEvent& event);
   void OnSARepeat(wxCommandEvent& event);
   void OnSAAudioSetup(wxCommandEvent& event);
+  void OnSABaselineSweep(wxCommandEvent& event);
+  bool SADifferentialBaselineReady(wxString* reason = nullptr);
   void OnDeviceRefresh(wxCommandEvent& event);
   void OnHomeFFT(wxCommandEvent& event);
   void OnHomeSweep(wxCommandEvent& event);
@@ -324,6 +326,7 @@ class MainFrame : public wxFrame {
   wxButton* button_sa_next;
   wxButton* button_sa_repeat;
   wxButton* button_sa_audio_setup;
+  wxButton* button_sa_baseline_sweep;
   int m_saStep;
   bool m_saStarted;
   bool m_e4x4Detected;

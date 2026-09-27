@@ -98,6 +98,7 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
   EVT_BUTTON(ID_SA_NEXT, MainFrame::OnSANext)
   EVT_BUTTON(ID_SA_REPEAT, MainFrame::OnSARepeat)
   EVT_BUTTON(ID_SA_AUDIO_SETUP, MainFrame::OnSAAudioSetup)
+  EVT_BUTTON(ID_SA_BASELINE_SWEEP, MainFrame::OnSABaselineSweep)
   EVT_BUTTON(ID_DEVICE_REFRESH, MainFrame::OnDeviceRefresh)
   EVT_BUTTON(ID_HOME_FFT, MainFrame::OnHomeFFT)
   EVT_BUTTON(ID_HOME_SWEEP, MainFrame::OnHomeSweep)
@@ -496,9 +497,13 @@ wxBitmap MainFrame::MakeGuidePlaceholder(const wxString& title, const wxString& 
   dc.DrawRoundedRectangle(a, 8);
   dc.DrawRoundedRectangle(b, 8);
   dc.DrawRoundedRectangle(c, 8);
-  dc.DrawText(wxT("E4x4 Pre"), a.x + 16, a.y + 24);
-  dc.DrawText(wxT("SA-440F5"), b.x + 16, b.y + 24);
-  dc.DrawText(wxT("FFT / THD"), c.x + 16, c.y + 24);
+  const bool directLoopback = title == wxT("Loopback 基准");
+  dc.DrawText(directLoopback ? wxT("耳机输出 1") : wxT("E4x4 Pre"),
+              a.x + 16, a.y + 24);
+  dc.DrawText(directLoopback ? wxT("TRS 直连") : wxT("SA-440F5"),
+              b.x + 16, b.y + 24);
+  dc.DrawText(directLoopback ? wxT("IN3 差分输入") : wxT("FFT / THD"),
+              c.x + 16, c.y + 24);
   dc.DrawLine(a.GetRight(), a.y + a.height / 2, b.x, b.y + b.height / 2);
   dc.DrawLine(b.GetRight(), b.y + b.height / 2, c.x, c.y + c.height / 2);
   dc.SelectObject(wxNullBitmap);
@@ -517,7 +522,7 @@ void MainFrame::BuildSA440F5Panel() {
   titleFont.SetPointSize(titleFont.GetPointSize() + 6);
   titleFont.SetWeight(wxFONTWEIGHT_BOLD);
   title->SetFont(titleFont);
-  button_sa_start = new wxButton(notebook_1_sa, ID_SA_START, wxT("一键开始测试"));
+  button_sa_start = new wxButton(notebook_1_sa, ID_SA_START, wxT("开始测试向导"));
   button_sa_audio_setup = new wxButton(notebook_1_sa, ID_SA_AUDIO_SETUP, wxT("音频接口设置"));
   top->Add(title, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, 12);
   top->Add(button_sa_audio_setup, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
@@ -556,9 +561,12 @@ void MainFrame::BuildSA440F5Panel() {
   wxBoxSizer* nav = new wxBoxSizer(wxHORIZONTAL);
   button_sa_prev = new wxButton(notebook_1_sa, ID_SA_PREV, wxT("上一步"));
   button_sa_repeat = new wxButton(notebook_1_sa, ID_SA_REPEAT, wxT("重新生成本步引导"));
+  button_sa_baseline_sweep = new wxButton(
+      notebook_1_sa, ID_SA_BASELINE_SWEEP, wxT("去 Sweep 测量或载入差分基准"));
   button_sa_next = new wxButton(notebook_1_sa, ID_SA_NEXT, wxT("下一步"));
   nav->Add(button_sa_prev, 0, wxRIGHT, 8);
   nav->Add(button_sa_repeat, 0, wxRIGHT, 8);
+  nav->Add(button_sa_baseline_sweep, 0, wxRIGHT, 8);
   nav->AddStretchSpacer(1);
   nav->Add(button_sa_next, 0);
   root->Add(nav, 0, wxALL | wxEXPAND, 20);
@@ -608,13 +616,13 @@ void MainFrame::UpdateSA440F5Step() {
            "推荐采样率 96 kHz；正式测量前先完成 Loopback 基准。"),
        wxT("E4x4 Pre → PC，48 V OFF")},
       {wxT("Loopback 基准"),
-       wxT("将 E4x4 Pre 的线路输出直接回接线路输入。\n"
-           "运行 1 kHz FFT/THD，记录接口自身基波、THD 和 Noise Floor。\n"
-           "后续 DUT 结果必须与这组基线比较，不能把声卡自身噪声算进 SA-440F5。"),
-       wxT("OUT → IN 直接回环")},
+       wxT("保持耳机输出 1 → IN3 的 TRS 直连；48 V 与直接监听须关闭。\n"
+           "在 Sweep 页测量或载入“左右反相差分”基准（至少覆盖 20 Hz–20 kHz）。\n"
+           "当前只校准相对频响；绝对电压、接口 THD 和本底噪声尚未校准。"),
+       wxT("耳机输出 1 → IN3，左右反相")},
       {wxT("1 kHz 增益"),
        wxT("E4x4 Pre 输出 → SA-440F5 差分输入，SA-440F5 输出 → E4x4 Pre Line In。\n"
-           "从小信号开始，目标约 10 mVpp 差分输入；40 dB 增益时输出约 1 Vpp。\n"
+           "从小信号开始。约 10 mVpp 差分输入的目标须用独立电压测量确认，软件尚不能保证；40 dB 增益时输出约 1 Vpp。\n"
            "禁止在 SA 输出端额外并 50 Ω 终端，否则会产生约 6 dB 衰减。"),
        wxT("E4x4 Pre → SA-440F5 → Line In")},
       {wxT("Sweep 幅频响应"),
@@ -648,10 +656,17 @@ void MainFrame::UpdateSA440F5Step() {
         wxString::Format(wxT("SA-440F5 · 步骤 %d / %d · %s"), m_saStep + 1, count,
                          steps[m_saStep].title));
   }
-  label_sa_step_body->SetLabel(steps[m_saStep].body);
+  wxString stepBody = steps[m_saStep].body;
+  if (m_saStep == 1 && m_saStarted) {
+    stepBody += SADifferentialBaselineReady() ?
+        wxT("\n\n● 差分相对频响基准与当前设备/采样率匹配；仍需确认 DUT 接线和实际电压。") :
+        wxT("\n\n○ 尚无与当前设备/采样率匹配的差分基准，不能进入 DUT 步骤。") ;
+  }
+  label_sa_step_body->SetLabel(stepBody);
   label_sa_step_body->Wrap(420);
   gauge_sa_progress->SetValue(m_saStep + 1);
   button_sa_prev->Enable(m_saStep > 0);
+  button_sa_baseline_sweep->Show(m_saStep == 1);
   button_sa_next->SetLabel(m_saStep == count - 1 ? wxT("完成") : wxT("下一步"));
 
   wxFileName exe(wxStandardPaths::Get().GetExecutablePath());
@@ -769,10 +784,23 @@ void MainFrame::OnSAPrev(wxCommandEvent& WXUNUSED(event)) {
 }
 
 void MainFrame::OnSANext(wxCommandEvent& WXUNUSED(event)) {
+  if (m_saStep == 1) {
+    wxString reason;
+    if (!SADifferentialBaselineReady(&reason)) {
+      UpdateSA440F5Step();
+      wxMessageBox(wxT("差分基准未就绪：") + reason +
+                       wxT("\n请在 Sweep 页测量或载入匹配的反相差分基准。"),
+                   wxT("差分基准未就绪"), wxOK | wxICON_WARNING, this);
+      return;
+    }
+    if (wxMessageBox(wxT("差分相对频响基准已匹配，但绝对电压、THD 与噪声尚未校准。进入 DUT 增益步骤前，请确认已停止回环、断开耳机输出 1 → IN3 的直连，并按向导重新接入 SA-440F5；从低电平开始且 48 V 保持关闭。是否已完成重新接线？"),
+                     wxT("确认 DUT 接线"), wxYES_NO | wxICON_WARNING, this) != wxYES)
+      return;
+  }
   if (m_saStep == 6) {
     m_saStarted = false;
-    label_current_dut->SetLabel(wxT("SA-440F5 · 向导已完成 · 等待结果复核"));
-    frame_1_statusbar->SetStatusText(wxT("SA-440F5 测试向导已完成，请保存数据并复核结论"));
+    label_current_dut->SetLabel(wxT("SA-440F5 · 引导已结束 · 尚无自动实测结论"));
+    frame_1_statusbar->SetStatusText(wxT("向导已结束；软件未自动判定 DUT，请保存数据并人工复核"));
     return;
   }
   m_saStarted = true;
@@ -781,6 +809,37 @@ void MainFrame::OnSANext(wxCommandEvent& WXUNUSED(event)) {
 }
 
 void MainFrame::OnSARepeat(wxCommandEvent& WXUNUSED(event)) { UpdateSA440F5Step(); }
+
+bool MainFrame::SADifferentialBaselineReady(wxString* reason) {
+  auto fail = [&](const wxString& message) {
+    if (reason) *reason = message;
+    return false;
+  };
+  if (!m_RWAudio || !m_loopbackValid)
+    return fail(wxT("尚未测量或载入 Loopback 基准。"));
+  if (m_dualOutputValid || m_loopbackOutputChannel != 3 || m_loopbackCaptureChannel != 0)
+    return fail(wxT("当前是单独输出基准，不是 IN3 左输入的反相差分基准。"));
+  if (frm_running || button_spe_start->GetValue() || button_gen_start->GetValue() ||
+      button_osc_start->GetValue())
+    return fail(wxT("音频接口仍在测量，请先停止。"));
+  if (m_loopbackRecordDev != m_RecordDev || m_loopbackPlayDev != m_PlayDev)
+    return fail(wxT("当前输入/输出设备编号与基准不符。"));
+  std::string recordName, playName;
+  if (!GetSelectedDeviceNames(m_RecordDev, m_PlayDev, &recordName, &playName))
+    return fail(wxT("无法读取当前音频接口。"));
+  if (!DifferentialLoopbackReady(CurrentLoopbackReference(),
+                                 m_RWAudio->GetCurrentApiName(), recordName,
+                                 playName, m_SamplingFreq))
+    return fail(wxT("音频后端、设备名称、采样率或基准频段不匹配。"));
+  if (reason) reason->clear();
+  return true;
+}
+
+void MainFrame::OnSABaselineSweep(wxCommandEvent& WXUNUSED(event)) {
+  notebook_1->SetSelection(2);
+  frame_1_statusbar->SetStatusText(
+      wxT("请测量或载入左右反相差分基准，随后返回 SA-440F5 向导"));
+}
 
 void MainFrame::OnSAAudioSetup(wxCommandEvent& WXUNUSED(event)) {
   wxCommandEvent dummy;
@@ -1680,6 +1739,7 @@ bool MainFrame::CaptureLoopback(bool confirmWiring) {
       m_loopbackRate, m_loopbackLevelDbfs));
   notebook_1_home->Layout();
   DrawFreqResponse();
+  if (m_saStarted && m_saStep == 1) UpdateSA440F5Step();
   return true;
 }
 
@@ -1892,6 +1952,7 @@ void MainFrame::OnLoadLoopback(wxCommandEvent& WXUNUSED(event)) {
       reference.sampleRate, reference.levelDbfs));
   notebook_1_home->Layout();
   DrawFreqResponse();
+  if (m_saStarted && m_saStep == 1) UpdateSA440F5Step();
   frame_1_statusbar->SetStatusText(wxT("Loopback 基准已载入；请核对输出接线和激励电平"));
 }
 

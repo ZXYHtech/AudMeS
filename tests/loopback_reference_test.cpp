@@ -75,6 +75,22 @@ int main() {
     std::cerr << "Differential output baseline was not kept separate\n";
     return 1;
   }
+  if (!DifferentialLoopbackReady(original, original.api, original.recordDevice,
+                                 original.playDevice, 44100) ||
+      DifferentialLoopbackReady(original, original.api, original.recordDevice,
+                                 original.playDevice, 96000) ||
+      DifferentialLoopbackReady(original, original.api, "Other input",
+                                 original.playDevice, 44100)) {
+    std::cerr << "Differential baseline readiness or route guard failed\n";
+    return 1;
+  }
+  original.outputChannel = 0;
+  if (DifferentialLoopbackReady(original, original.api, original.recordDevice,
+                                original.playDevice, 44100)) {
+    std::cerr << "Single-output baseline passed differential guard\n";
+    return 1;
+  }
+  original.outputChannel = 3;
   original.rms[1] = 0.0;
   if (SerializeLoopbackReference(original, &serialized, &error)) {
     std::cerr << "Invalid reference signal was accepted\n";

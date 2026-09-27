@@ -81,6 +81,17 @@ bool LoopbackMatchesRoute(const LoopbackReference& reference, const std::string&
       std::fabs(reference.levelDbfs - levelDbfs) < 1e-6;
 }
 
+bool DifferentialLoopbackReady(const LoopbackReference& reference, const std::string& api,
+                               const std::string& recordDevice, const std::string& playDevice,
+                               unsigned int sampleRate) {
+  return ValidateLoopbackReference(reference, nullptr) &&
+      reference.outputChannel == 3 && reference.captureChannel == 0 &&
+      reference.frequencies.front() <= 20.0 &&
+      reference.frequencies.back() >= 20000.0 &&
+      LoopbackMatchesRoute(reference, api, recordDevice, playDevice, sampleRate,
+                           3, reference.levelDbfs);
+}
+
 bool SerializeLoopbackReference(const LoopbackReference& reference, std::string* contents,
                                 std::string* error) {
   if (!contents || !ValidateLoopbackReference(reference, error)) return false;
