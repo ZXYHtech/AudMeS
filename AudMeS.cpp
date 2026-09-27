@@ -323,7 +323,7 @@ MainFrame::MainFrame(wxWindow* parent, int id, const wxString& title, const wxPo
   button_frm_reference = new wxButton(notebook_1_frm, ID_SWEEP_REFERENCE,
                                       wxT("将当前实测设为 Loopback 基准"));
   button_frm_auto_reference = new wxButton(notebook_1_frm, ID_SWEEP_AUTO_REFERENCE,
-                                           wxT("一键测量 Loopback 基准"));
+                                           wxT("一键测量双输出基准"));
   button_frm_save_reference = new wxButton(notebook_1_frm, ID_SWEEP_SAVE_REFERENCE,
                                           wxT("保存基准"));
   button_frm_load_reference = new wxButton(notebook_1_frm, ID_SWEEP_LOAD_REFERENCE,
@@ -1132,6 +1132,8 @@ void MainFrame::set_custom_props() {
   frm_input_gain = 0.0;
   m_sweepComplete = false;
   m_autoLoopback = false;
+  m_autoLoopbackPhase = 0;
+  m_dualOutputValid = false;
   m_sweepLevelDbfs = 0.0;
   m_sweepRate = 0;
   m_sweepRecordDev = 0;
@@ -1380,8 +1382,8 @@ void MainFrame::CalcFreqResponse() {
     }
   } else {
     const bool autoLoopback = m_autoLoopback;
+    const int autoPhase = m_autoLoopbackPhase;
     m_autoLoopback = false;
-    button_frm_auto_reference->Enable(true);
     frm_running = false;
     m_sweepComplete = true;
     button_frm_reference->Enable(true);
@@ -1392,12 +1394,39 @@ void MainFrame::CalcFreqResponse() {
     SendGenSettings();  // stop generator
     frame_1_statusbar->SetStatusText(
         wxString::Format(wxT("扫频完成 · 共 %d 个测量点"), frm_ipoints));
-    if (autoLoopback) {
-      if (CaptureLoopback(false))
-        frame_1_statusbar->SetStatusText(wxT("Loopback 基准已记录 · 点击“保存基准”可留存"));
-      else
-        frame_1_statusbar->SetStatusText(wxT("Loopback 基准无效 · 请检查回环接线和输入增益"));
+    if (autoLoopback && CaptureLoopback(false)) {
+      if (autoPhase == 0) {
+        m_dualOutput[0] = CurrentLoopbackReference();
+        m_autoLoopbackPhase = 1;
+        choice_frm_output->SetSelection(1);
+        m_autoLoopback = true;
+        button_frm_start->SetValue(true);
+        wxCommandEvent startEvent(wxEVT_TOGGLEBUTTON, ID_FRMSTART);
+        OnFrmStart(startEvent);
+        if (frm_running) {
+          frame_1_statusbar->SetStatusText(wxT("左输出基准已测得 · 正在测量右输出"));
+          return;
+        }
+        m_autoLoopback = false;
+      } else {
+        m_dualOutput[1] = CurrentLoopbackReference();
+        std::string error;
+        if (ValidateDualOutputReferences(m_dualOutput[0], m_dualOutput[1], &error)) {
+          m_dualOutputValid = true;
+          label_loopback_status->SetLabel(wxT("● 双输出基准已记录 · 同一 IN3 差分回传"));
+          notebook_1_home->Layout();
+          DrawFreqResponse();
+          frame_1_statusbar->SetStatusText(
+              wxT("左/右输出基准已记录 · 点击“保存基准”可留存"));
+        } else {
+          frame_1_statusbar->SetStatusText(wxT("双输出基准条件不一致 · 请重新测量"));
+        }
+      }
+    } else if (autoLoopback) {
+      frame_1_statusbar->SetStatusText(wxT("回环信号无效 · 未建立双输出基准"));
     }
+    m_autoLoopbackPhase = 0;
+    button_frm_auto_reference->Enable(true);
   }
 }
 
@@ -1409,10 +1438,16 @@ void MainFrame::DrawFreqResponse(void) {
     rightRms.push_back(frm_rgains[i]);
   }
   bool corrected = false;
+  const LoopbackReference* activeDual = m_dualOutputValid &&
+      frm_output_channel >= 0 && frm_output_channel < 2 ?
+      &m_dualOutput[frm_output_channel] : nullptr;
+  const int captureChannel = activeDual ? activeDual->captureChannel : m_loopbackCaptureChannel;
   if (checkbox_frm_correct->GetValue() && m_sweepComplete && CurrentSweepMatchesLoopback()) {
-    std::vector<double>& selected = m_loopbackCaptureChannel == 0 ? leftRms : rightRms;
+    std::vector<double>& selected = captureChannel == 0 ? leftRms : rightRms;
     const std::vector<double> compensated = CorrectSweepRms(
-        frequencies, selected, m_loopbackFrequencies, m_loopbackRms);
+        frequencies, selected,
+        activeDual ? activeDual->frequencies : m_loopbackFrequencies,
+        activeDual ? activeDual->rms : m_loopbackRms);
     if (!compensated.empty()) {
       selected = compensated;
       corrected = true;
@@ -1430,7 +1465,7 @@ void MainFrame::DrawFreqResponse(void) {
       right.Add(rightResult.levelsDb[i] -
                 (normalized && rightResult.hasReference ? rightResult.referenceDb : 0.0));
   }
-  const int channel = corrected ? m_loopbackCaptureChannel + 1 :
+  const int channel = corrected ? captureChannel + 1 :
       choice_frm_channel->GetSelection();
   window_1_frm->SetTrack1(channel == 2 ? wxArrayDouble() : left);
   window_1_frm->SetTrack2(channel == 1 ? wxArrayDouble() : right);
@@ -1468,7 +1503,13 @@ void MainFrame::DrawFreqResponse(void) {
   window_1_frm->SetMarkers(markers);
   label_frm_summary->SetLabel(summary.empty() ? wxT("−3 dB 截止点：等待扫频数据") : summary);
   wxString calibrationStatus = wxT("Loopback：尚无基准；需先完成直接回环扫频");
-  if (m_loopbackValid) {
+  if (m_dualOutputValid) {
+    calibrationStatus = wxString::Format(
+        wxT("双输出 Loopback：左/右输出分别测量 · 同一 IN3 · %u Hz · %.0f dBFS"),
+        m_dualOutput[0].sampleRate, m_dualOutput[0].levelDbfs);
+    if (checkbox_frm_correct->GetValue())
+      calibrationStatus += corrected ? wxT(" · 当前输出已补偿") : wxT(" · 当前曲线未补偿");
+  } else if (m_loopbackValid) {
     calibrationStatus = wxString::Format(wxT("Loopback 基准：%s输入 · %u Hz · %.0f dBFS · %s"),
         m_loopbackCaptureChannel == 0 ? wxT("左") : wxT("右"), m_loopbackRate,
         m_loopbackLevelDbfs, m_loopbackAt.c_str());
@@ -1485,6 +1526,12 @@ void MainFrame::DrawFreqResponse(void) {
 }
 
 bool MainFrame::CurrentSweepMatchesLoopback() const {
+  if (m_dualOutputValid && frm_output_channel >= 0 && frm_output_channel < 2) {
+    const LoopbackReference& reference = m_dualOutput[frm_output_channel];
+    return m_SamplingFreq == reference.sampleRate &&
+        m_RecordDev == m_loopbackRecordDev && m_PlayDev == m_loopbackPlayDev &&
+        std::fabs(m_sweepLevelDbfs - reference.levelDbfs) < 1e-6;
+  }
   return m_loopbackValid && m_SamplingFreq == m_loopbackRate &&
       m_RecordDev == m_loopbackRecordDev && m_PlayDev == m_loopbackPlayDev &&
       frm_output_channel == m_loopbackOutputChannel &&
@@ -1594,7 +1641,10 @@ bool MainFrame::CaptureLoopback(bool confirmWiring) {
 }
 
 void MainFrame::OnCaptureLoopback(wxCommandEvent& WXUNUSED(event)) {
-  CaptureLoopback(true);
+  if (CaptureLoopback(true)) {
+    m_dualOutputValid = false;
+    DrawFreqResponse();
+  }
 }
 
 void MainFrame::OnAutoLoopback(wxCommandEvent& WXUNUSED(event)) {
@@ -1616,7 +1666,7 @@ void MainFrame::OnAutoLoopback(wxCommandEvent& WXUNUSED(event)) {
                  wxT("音频接口不匹配"), wxOK | wxICON_WARNING, this);
     return;
   }
-  if (wxMessageBox(wxT("请确认 E4x4 Pre 前面板耳机输出 1 已直接连接模拟 IN 3，未经过被测设备；48 V 幻象电源已关闭，输出音量及输入增益已调至安全位置。\n\n将以左输出/左输入、20 Hz–20 kHz、24 点、−40 dBFS 测量。完成后自动记录基准；保存文件仍需手动点击。"),
+  if (wxMessageBox(wxT("请确认 E4x4 Pre 前面板立体声耳机输出 1 通过 TRS 线直接接到模拟 IN 3，未经过被测设备；48 V 幻象电源和直接监听已关闭，输出音量及输入增益已调至安全位置。\n\n将依次单独激励左、右输出，各以 20 Hz–20 kHz、24 点、−40 dBFS 测量同一个 IN3。所得是当前接线下的两路输出相对频响，不是两个独立输入或绝对电压校准。完成后需手动保存文件。"),
                    wxT("确认直接回环接线"), wxYES_NO | wxICON_QUESTION, this) != wxYES) return;
   text_ctrl_frm_start->SetValue(wxT("20"));
   text_ctrl_frm_end->SetValue(wxT("20000"));
@@ -1627,27 +1677,34 @@ void MainFrame::OnAutoLoopback(wxCommandEvent& WXUNUSED(event)) {
   choice_frm_output->SetSelection(0);
   checkbox_frm_correct->SetValue(false);
   choice_frm_channel->Enable(true);
+  m_dualOutputValid = false;
   m_autoLoopback = true;
+  m_autoLoopbackPhase = 0;
   button_frm_auto_reference->Enable(false);
   button_frm_start->SetValue(true);
   wxCommandEvent startEvent(wxEVT_TOGGLEBUTTON, ID_FRMSTART);
   OnFrmStart(startEvent);
   if (!frm_running) {
     m_autoLoopback = false;
+    m_autoLoopbackPhase = 0;
     button_frm_auto_reference->Enable(true);
   }
 }
 
 void MainFrame::OnSaveLoopback(wxCommandEvent& WXUNUSED(event)) {
-  if (!m_loopbackValid) return;
+  if (!m_loopbackValid && !m_dualOutputValid) return;
   std::string contents, error;
-  if (!SerializeLoopbackReference(CurrentLoopbackReference(), &contents, &error)) {
+  const bool serialized = m_dualOutputValid ?
+      SerializeDualOutputReferences(m_dualOutput[0], m_dualOutput[1], &contents, &error) :
+      SerializeLoopbackReference(CurrentLoopbackReference(), &contents, &error);
+  if (!serialized) {
     wxMessageBox(wxT("基准数据无效：") + wxString::FromUTF8(error.c_str()),
                  wxT("保存失败"), wxOK | wxICON_ERROR, this);
     return;
   }
   wxFileDialog dialog(this, wxT("保存 Loopback 基准"), wxEmptyString,
-      wxT("E4x4-loopback.audmes-loopback"),
+      m_dualOutputValid ? wxT("E4x4-dual-output.audmes-loopback") :
+                          wxT("E4x4-loopback.audmes-loopback"),
       wxT("AudMeS Loopback (*.audmes-loopback)|*.audmes-loopback"),
       wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
   if (dialog.ShowModal() != wxID_OK) return;
@@ -1692,9 +1749,13 @@ void MainFrame::OnLoadLoopback(wxCommandEvent& WXUNUSED(event)) {
     wxMessageBox(wxT("读取基准文件失败。"), wxT("载入失败"), wxOK | wxICON_ERROR, this);
     return;
   }
-  LoopbackReference reference;
+  LoopbackReference reference, rightReference;
   std::string error;
-  if (!ParseLoopbackReference(contents, &reference, &error)) {
+  const bool dualFile = contents.rfind("AUDMES_LOOPBACK_DUAL_V1\n", 0) == 0;
+  const bool parsed = dualFile ?
+      ParseDualOutputReferences(contents, &reference, &rightReference, &error) :
+      ParseLoopbackReference(contents, &reference, &error);
+  if (!parsed) {
     wxMessageBox(wxT("基准文件无效：") + wxString::FromUTF8(error.c_str()),
                  wxT("载入失败"), wxOK | wxICON_ERROR, this);
     return;
@@ -1722,11 +1783,17 @@ void MainFrame::OnLoadLoopback(wxCommandEvent& WXUNUSED(event)) {
   m_loopbackFrequencies = reference.frequencies;
   m_loopbackRms = reference.rms;
   m_loopbackValid = true;
+  m_dualOutputValid = dualFile;
+  if (dualFile) {
+    m_dualOutput[0] = reference;
+    m_dualOutput[1] = rightReference;
+  }
   choice_frm_output->SetSelection(reference.outputChannel);
   text_ctrl_frm_level->SetValue(wxString::Format(wxT("%.1f"), reference.levelDbfs));
   button_frm_save_reference->Enable(true);
   checkbox_frm_correct->Enable(true);
-  label_loopback_status->SetLabel(wxString::Format(
+  label_loopback_status->SetLabel(dualFile ?
+      wxT("● 已载入双输出基准 · 同一 IN3 差分回传") : wxString::Format(
       wxT("● 已载入%s输入基准 · %u Hz · %.0f dBFS"),
       reference.captureChannel == 0 ? wxT("左") : wxT("右"),
       reference.sampleRate, reference.levelDbfs));
@@ -2194,6 +2261,7 @@ void MainFrame::OnFrmStart(wxCommandEvent& WXUNUSED(event)) {
     }
   } else {
     m_autoLoopback = false;
+    m_autoLoopbackPhase = 0;
     button_frm_auto_reference->Enable(true);
     frm_running = false;
     button_frm_start->SetValue(false);

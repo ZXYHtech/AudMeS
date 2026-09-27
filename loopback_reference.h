@@ -25,5 +25,12 @@ bool SerializeLoopbackReference(const LoopbackReference& reference, std::string*
                                 std::string* error);
 bool ParseLoopbackReference(const std::string& contents, LoopbackReference* reference,
                             std::string* error);
+bool ValidateDualOutputReferences(const LoopbackReference& left,
+                                  const LoopbackReference& right, std::string* error);
+bool SerializeDualOutputReferences(const LoopbackReference& left,
+                                   const LoopbackReference& right,
+                                   std::string* contents, std::string* error);
+bool ParseDualOutputReferences(const std::string& contents, LoopbackReference* left,
+                               LoopbackReference* right, std::string* error);
 
 #endif  // AUDMES_LOOPBACK_REFERENCE_H

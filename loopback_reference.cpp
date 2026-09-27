@@ -147,3 +147,63 @@ bool ParseLoopbackReference(const std::string& contents, LoopbackReference* refe
   *reference = loaded;
   return true;
 }
+
+bool ValidateDualOutputReferences(const LoopbackReference& left,
+                                  const LoopbackReference& right, std::string* error) {
+  if (!ValidateLoopbackReference(left, error) || !ValidateLoopbackReference(right, error))
+    return false;
+  if (left.outputChannel != 0 || right.outputChannel != 1 ||
+      left.captureChannel != right.captureChannel ||
+      left.api != right.api || left.recordDevice != right.recordDevice ||
+      left.playDevice != right.playDevice || left.sampleRate != right.sampleRate ||
+      left.levelDbfs != right.levelDbfs || left.frequencies != right.frequencies)
+    return Fail(error, "Dual-output references must share route, input, level, and sweep plan.");
+  return true;
+}
+
+bool SerializeDualOutputReferences(const LoopbackReference& left,
+                                   const LoopbackReference& right,
+                                   std::string* contents, std::string* error) {
+  if (!contents || !ValidateDualOutputReferences(left, right, error)) return false;
+  std::string l, r;
+  if (!SerializeLoopbackReference(left, &l, error) ||
+      !SerializeLoopbackReference(right, &r, error)) return false;
+  *contents = "AUDMES_LOOPBACK_DUAL_V1\nleft_bytes=" + std::to_string(l.size()) +
+      "\n" + l + "right_bytes=" + std::to_string(r.size()) + "\n" + r;
+  return true;
+}
+
+bool ParseDualOutputReferences(const std::string& contents, LoopbackReference* left,
+                               LoopbackReference* right, std::string* error) {
+  if (!left || !right || contents.size() > 1024 * 1024)
+    return Fail(error, "Missing destination or dual-output file too large.");
+  const std::string header = "AUDMES_LOOPBACK_DUAL_V1\n";
+  if (contents.compare(0, header.size(), header) != 0)
+    return Fail(error, "Invalid dual-output file header or version.");
+  size_t position = header.size();
+  auto readPart = [&](const std::string& key, std::string* part) -> bool {
+    const size_t end = contents.find('\n', position);
+    if (end == std::string::npos ||
+        contents.compare(position, key.size(), key) != 0) return false;
+    size_t length = 0;
+    if (!ParseNumber(contents.substr(position + key.size(),
+                                     end - position - key.size()), &length) ||
+        length == 0 || length > 512 * 1024 || length > contents.size() - end - 1)
+      return false;
+    position = end + 1;
+    *part = contents.substr(position, length);
+    position += length;
+    return true;
+  };
+  std::string l, r;
+  if (!readPart("left_bytes=", &l) || !readPart("right_bytes=", &r) ||
+      position != contents.size())
+    return Fail(error, "Invalid dual-output section lengths.");
+  LoopbackReference loadedLeft, loadedRight;
+  if (!ParseLoopbackReference(l, &loadedLeft, error) ||
+      !ParseLoopbackReference(r, &loadedRight, error) ||
+      !ValidateDualOutputReferences(loadedLeft, loadedRight, error)) return false;
+  *left = loadedLeft;
+  *right = loadedRight;
+  return true;
+}

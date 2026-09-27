@@ -44,6 +44,26 @@ int main() {
     std::cerr << "Malformed Loopback file was accepted\n";
     return 1;
   }
+  LoopbackReference right = original;
+  right.outputChannel = 1;
+  right.rms = {0.00031, 0.00032, 0.00031};
+  std::string dual;
+  LoopbackReference loadedLeft, loadedRight;
+  if (!SerializeDualOutputReferences(original, right, &dual, &error) ||
+      !ParseDualOutputReferences(dual, &loadedLeft, &loadedRight, &error) ||
+      loadedLeft.rms != original.rms || loadedRight.rms != right.rms ||
+      loadedRight.outputChannel != 1 ||
+      ParseDualOutputReferences(dual + "extra", &loadedLeft, &loadedRight, &error) ||
+      ParseDualOutputReferences(dual.substr(0, dual.size() - 1),
+                                &loadedLeft, &loadedRight, &error)) {
+    std::cerr << "Dual-output roundtrip or corruption check failed\n";
+    return 1;
+  }
+  right.captureChannel = 1;
+  if (SerializeDualOutputReferences(original, right, &dual, &error)) {
+    std::cerr << "Mismatched dual-output inputs were accepted\n";
+    return 1;
+  }
   original.rms[1] = 0.0;
   if (SerializeLoopbackReference(original, &serialized, &error)) {
     std::cerr << "Invalid reference signal was accepted\n";

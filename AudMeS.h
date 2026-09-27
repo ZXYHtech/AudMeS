@@ -241,6 +241,9 @@ class MainFrame : public wxFrame {
   int frm_output_channel;
   bool m_sweepComplete;
   bool m_autoLoopback;
+  int m_autoLoopbackPhase;
+  bool m_dualOutputValid;
+  LoopbackReference m_dualOutput[2];
   double m_sweepLevelDbfs;
   unsigned int m_sweepRate;
   unsigned int m_sweepRecordDev;
