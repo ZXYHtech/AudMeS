@@ -59,7 +59,22 @@ int main() {
     std::cerr << "Dual-output roundtrip or corruption check failed\n";
     return 1;
   }
+  DualOutputBalance balance;
+  if (!AnalyzeDualOutputBalance(loadedLeft, loadedRight, &balance, &error) ||
+      std::fabs(balance.leftMinusRightDbAt1k -
+                20.0 * std::log10(original.rms[1] / right.rms[1])) > 1e-9 ||
+      std::fabs(balance.maxAbsDifferenceDb -
+                20.0 * std::log10(original.rms[0] / right.rms[0])) > 1e-9 ||
+      balance.maxDifferenceHz != 20.0 ||
+      AnalyzeDualOutputBalance(loadedLeft, loadedRight, nullptr, &error)) {
+    std::cerr << "Dual-output balance calculation failed\n";
+    return 1;
+  }
   right.captureChannel = 1;
+  if (AnalyzeDualOutputBalance(original, right, &balance, &error)) {
+    std::cerr << "Mismatched dual-output inputs were analysed\n";
+    return 1;
+  }
   if (SerializeDualOutputReferences(original, right, &dual, &error)) {
     std::cerr << "Mismatched dual-output inputs were accepted\n";
     return 1;

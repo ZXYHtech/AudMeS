@@ -1501,7 +1501,11 @@ void MainFrame::CalcFreqResponse() {
         std::string error;
         if (ValidateDualOutputReferences(m_dualOutput[0], m_dualOutput[1], &error)) {
           m_dualOutputValid = true;
-          label_loopback_status->SetLabel(wxT("● 双输出基准已记录 · 同一 IN3 差分回传"));
+          DualOutputBalance balance;
+          AnalyzeDualOutputBalance(m_dualOutput[0], m_dualOutput[1], &balance, &error);
+          label_loopback_status->SetLabel(wxString::Format(
+              wxT("● 双输出基准已记录 · 同一 IN3 回环 · 1 kHz 左−右 %+.3f dB"),
+              balance.leftMinusRightDbAt1k));
           notebook_1_home->Layout();
           DrawFreqResponse();
           frame_1_statusbar->SetStatusText(
@@ -1603,6 +1607,14 @@ void MainFrame::DrawFreqResponse(void) {
         m_dualOutput[0].sampleRate, m_dualOutput[0].levelDbfs);
     if (checkbox_frm_correct->GetValue())
       calibrationStatus += corrected ? wxT(" · 当前输出已补偿") : wxT(" · 当前曲线未补偿");
+    DualOutputBalance balance;
+    std::string balanceError;
+    if (AnalyzeDualOutputBalance(m_dualOutput[0], m_dualOutput[1],
+                                 &balance, &balanceError))
+      calibrationStatus += wxString::Format(
+          wxT(" · 同一 IN3 回环：1 kHz 左−右 %+.3f dB；最大差 %.3f dB @ %.0f Hz（非绝对电压）"),
+          balance.leftMinusRightDbAt1k, balance.maxAbsDifferenceDb,
+          balance.maxDifferenceHz);
   } else if (m_loopbackValid) {
     calibrationStatus = wxString::Format(wxT("Loopback 基准：%s输入%s · %u Hz · %.0f dBFS · %s"),
         m_loopbackCaptureChannel == 0 ? wxT("左") : wxT("右"),
@@ -1944,12 +1956,20 @@ void MainFrame::OnLoadLoopback(wxCommandEvent& WXUNUSED(event)) {
   text_ctrl_frm_level->SetValue(wxString::Format(wxT("%.1f"), reference.levelDbfs));
   button_frm_save_reference->Enable(true);
   checkbox_frm_correct->Enable(true);
-  label_loopback_status->SetLabel(dualFile ?
-      wxT("● 已载入双输出基准 · 同一 IN3 差分回传") : wxString::Format(
-      wxT("● 已载入%s输入%s基准 · %u Hz · %.0f dBFS"),
-      reference.captureChannel == 0 ? wxT("左") : wxT("右"),
-      reference.outputChannel == 3 ? wxT("反相差分") : wxT(""),
-      reference.sampleRate, reference.levelDbfs));
+  if (dualFile) {
+    DualOutputBalance balance;
+    std::string balanceError;
+    AnalyzeDualOutputBalance(m_dualOutput[0], m_dualOutput[1], &balance, &balanceError);
+    label_loopback_status->SetLabel(wxString::Format(
+        wxT("● 已载入双输出基准 · 同一 IN3 回环 · 1 kHz 左−右 %+.3f dB"),
+        balance.leftMinusRightDbAt1k));
+  } else {
+    label_loopback_status->SetLabel(wxString::Format(
+        wxT("● 已载入%s输入%s基准 · %u Hz · %.0f dBFS"),
+        reference.captureChannel == 0 ? wxT("左") : wxT("右"),
+        reference.outputChannel == 3 ? wxT("反相差分") : wxT(""),
+        reference.sampleRate, reference.levelDbfs));
+  }
   notebook_1_home->Layout();
   DrawFreqResponse();
   if (m_saStarted && m_saStep == 1) UpdateSA440F5Step();

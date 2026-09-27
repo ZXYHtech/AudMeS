@@ -17,6 +17,12 @@ struct LoopbackReference {
   std::vector<double> rms;
 };
 
+struct DualOutputBalance {
+  double leftMinusRightDbAt1k = 0.0;
+  double maxAbsDifferenceDb = 0.0;
+  double maxDifferenceHz = 0.0;
+};
+
 bool ValidateLoopbackReference(const LoopbackReference& reference, std::string* error);
 bool LoopbackMatchesRoute(const LoopbackReference& reference, const std::string& api,
                           const std::string& recordDevice, const std::string& playDevice,
@@ -30,6 +36,9 @@ bool ParseLoopbackReference(const std::string& contents, LoopbackReference* refe
                             std::string* error);
 bool ValidateDualOutputReferences(const LoopbackReference& left,
                                   const LoopbackReference& right, std::string* error);
+bool AnalyzeDualOutputBalance(const LoopbackReference& left,
+                              const LoopbackReference& right,
+                              DualOutputBalance* balance, std::string* error);
 bool SerializeDualOutputReferences(const LoopbackReference& left,
                                    const LoopbackReference& right,
                                    std::string* contents, std::string* error);

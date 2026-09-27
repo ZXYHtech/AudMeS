@@ -172,6 +172,27 @@ bool ValidateDualOutputReferences(const LoopbackReference& left,
   return true;
 }
 
+bool AnalyzeDualOutputBalance(const LoopbackReference& left,
+                              const LoopbackReference& right,
+                              DualOutputBalance* balance, std::string* error) {
+  if (!balance) return Fail(error, "Missing dual-output balance destination.");
+  if (!ValidateDualOutputReferences(left, right, error)) return false;
+  const SweepAnalysis leftAnalysis = AnalyzeSweepChannel(left.frequencies, left.rms);
+  const SweepAnalysis rightAnalysis = AnalyzeSweepChannel(right.frequencies, right.rms);
+  DualOutputBalance result;
+  result.leftMinusRightDbAt1k = leftAnalysis.referenceDb - rightAnalysis.referenceDb;
+  for (size_t i = 0; i < left.rms.size(); ++i) {
+    const double differenceDb = 20.0 *
+        (std::log10(left.rms[i]) - std::log10(right.rms[i]));
+    if (std::fabs(differenceDb) > result.maxAbsDifferenceDb) {
+      result.maxAbsDifferenceDb = std::fabs(differenceDb);
+      result.maxDifferenceHz = left.frequencies[i];
+    }
+  }
+  *balance = result;
+  return true;
+}
+
 bool SerializeDualOutputReferences(const LoopbackReference& left,
                                    const LoopbackReference& right,
                                    std::string* contents, std::string* error) {

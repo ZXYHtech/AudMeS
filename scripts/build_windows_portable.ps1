@@ -172,8 +172,29 @@ try {
     $ltoPlugin = (& $environmentInfo.GCC '-print-file-name=liblto_plugin.dll').Trim()
     Copy-Item -LiteralPath $ltoPlugin -Destination $compilerRuntime -Force
     Copy-Item -LiteralPath (Join-Path $environmentInfo.MingwBin 'zlib1.dll') -Destination $compilerRuntime -Force
-    $compilerPrefix = $compilerRuntime.Replace('\', '/') + '/'
-    $compilerFlags = '-B"{0}"' -f $compilerPrefix
+    # CMake's MinGW Makefiles generator strips nested quotes from CMAKE_*_FLAGS.
+    # Use the Windows short path so GCC's -B prefix remains one argument.
+    if (-not ('AudMeSShortPath' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+public static class AudMeSShortPath {
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern uint GetShortPathName(string longPath, StringBuilder shortPath, uint bufferLength);
+}
+'@
+    }
+    $shortPathBuffer = New-Object System.Text.StringBuilder 32768
+    $shortPathLength = [AudMeSShortPath]::GetShortPathName($compilerRuntime, $shortPathBuffer, [uint32]$shortPathBuffer.Capacity)
+    if ($shortPathLength -eq 0 -or $shortPathLength -ge $shortPathBuffer.Capacity) {
+        throw "无法获取编译器暂存目录的短路径：$compilerRuntime"
+    }
+    $compilerPrefix = $shortPathBuffer.ToString().Replace('\', '/') + '/'
+    if ($compilerPrefix.Contains(' ')) {
+        throw "编译器暂存目录的短路径仍包含空格：$compilerPrefix"
+    }
+    $compilerFlags = '-B{0}' -f $compilerPrefix
 
     Invoke-CheckedCommand -FilePath $environmentInfo.CMake -Arguments @(
         '-S', $repoRoot,
