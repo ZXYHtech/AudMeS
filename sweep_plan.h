@@ -24,4 +24,12 @@ SweepAnalysis AnalyzeSweepChannel(const std::vector<double>& frequencies,
                                   const std::vector<double>& rms,
                                   double referenceHz = 1000.0);
 
+// Divide a measured response by a loopback reference in linear RMS units.
+// Interpolate the reference on a logarithmic frequency/amplitude scale.
+// Returns empty when the reference does not cover the measurement or data is invalid.
+std::vector<double> CorrectSweepRms(const std::vector<double>& frequencies,
+                                    const std::vector<double>& rms,
+                                    const std::vector<double>& referenceFrequencies,
+                                    const std::vector<double>& referenceRms);
+
 #endif  // AUDMES_SWEEP_PLAN_H

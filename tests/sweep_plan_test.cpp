@@ -61,5 +61,23 @@ int main() {
     std::cerr << "Flat response must not invent cutoff points\n";
     return 1;
   }
+  const std::vector<double> corrected = CorrectSweepRms(
+      {100.0, 1000.0, 10000.0}, {0.1, 0.2, 0.1},
+      {100.0, 1000.0, 10000.0}, {0.05, 0.1, 0.05});
+  if (corrected.size() != 3 || std::fabs(corrected[0] - 2.0) > 1e-10 ||
+      std::fabs(corrected[1] - 2.0) > 1e-10 ||
+      std::fabs(corrected[2] - 2.0) > 1e-10) {
+    std::cerr << "Loopback correction failed\n";
+    return 1;
+  }
+  const std::vector<double> interpolatedCorrection = CorrectSweepRms(
+      {1000.0}, {0.1}, {100.0, 10000.0}, {0.01, 1.0});
+  if (interpolatedCorrection.size() != 1 ||
+      std::fabs(interpolatedCorrection[0] - 1.0) > 1e-10 ||
+      !CorrectSweepRms({50.0}, {0.1}, {100.0, 10000.0}, {0.01, 1.0}).empty() ||
+      !CorrectSweepRms({1000.0}, {0.1}, {100.0, 10000.0}, {0.0, 1.0}).empty()) {
+    std::cerr << "Loopback interpolation or invalid baseline handling failed\n";
+    return 1;
+  }
   return 0;
 }

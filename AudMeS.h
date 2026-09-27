@@ -67,6 +67,8 @@ class MainFrame : public wxFrame {
   void OnOscStart(wxCommandEvent& event);
   void OnFrmStart(wxCommandEvent& event);
   void OnSweepViewChanged(wxCommandEvent& event);
+  void OnCaptureLoopback(wxCommandEvent& event);
+  bool CurrentSweepMatchesLoopback() const;
   void OnAboutClick(wxCommandEvent& event);
   void OnExitClick(wxCommandEvent& event);
   void OnClose(wxCloseEvent& event);
@@ -207,6 +209,9 @@ class MainFrame : public wxFrame {
   wxCheckBox* checkbox_frm_normalize;
   wxChoice* choice_frm_channel;
   wxChoice* choice_frm_output;
+  wxCheckBox* checkbox_frm_correct;
+  wxButton* button_frm_reference;
+  wxStaticText* label_frm_calibration;
   wxStaticText* label_frm_summary;
   wxTextCtrl* text_ctrl2_frm;
   wxToggleButton* button_frm_start;
@@ -223,6 +228,21 @@ class MainFrame : public wxFrame {
   int frm_measure;
   double frm_input_gain;
   int frm_output_channel;
+  bool m_sweepComplete;
+  double m_sweepLevelDbfs;
+  unsigned int m_sweepRate;
+  unsigned int m_sweepRecordDev;
+  unsigned int m_sweepPlayDev;
+  bool m_loopbackValid;
+  unsigned int m_loopbackRate;
+  unsigned int m_loopbackRecordDev;
+  unsigned int m_loopbackPlayDev;
+  int m_loopbackOutputChannel;
+  int m_loopbackCaptureChannel;
+  double m_loopbackLevelDbfs;
+  wxString m_loopbackAt;
+  std::vector<double> m_loopbackFrequencies;
+  std::vector<double> m_loopbackRms;
   std::vector<double> frm_plan;
   double sweep_div;
 

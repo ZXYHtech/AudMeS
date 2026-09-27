@@ -85,3 +85,38 @@ SweepAnalysis AnalyzeSweepChannel(const std::vector<double>& frequencies,
   }
   return result;
 }
+
+std::vector<double> CorrectSweepRms(const std::vector<double>& frequencies,
+                                    const std::vector<double>& rms,
+                                    const std::vector<double>& referenceFrequencies,
+                                    const std::vector<double>& referenceRms) {
+  std::vector<double> corrected;
+  if (frequencies.empty() || frequencies.size() != rms.size() ||
+      referenceFrequencies.size() < 2 ||
+      referenceFrequencies.size() != referenceRms.size()) return corrected;
+  for (size_t i = 0; i < referenceFrequencies.size(); ++i) {
+    if (!std::isfinite(referenceFrequencies[i]) || referenceFrequencies[i] <= 0.0 ||
+        !std::isfinite(referenceRms[i]) || referenceRms[i] <= 0.0 ||
+        (i && referenceFrequencies[i] <= referenceFrequencies[i - 1])) return {};
+  }
+  size_t referenceIndex = 0;
+  for (size_t i = 0; i < frequencies.size(); ++i) {
+    const double hz = frequencies[i];
+    if (!std::isfinite(hz) || hz <= 0.0 || !std::isfinite(rms[i]) || rms[i] <= 0.0 ||
+        (i && hz <= frequencies[i - 1]) || hz < referenceFrequencies.front() ||
+        hz > referenceFrequencies.back()) return {};
+    while (referenceIndex + 1 < referenceFrequencies.size() &&
+           referenceFrequencies[referenceIndex + 1] < hz) ++referenceIndex;
+    double logReference = std::log(referenceRms[referenceIndex]);
+    if (hz != referenceFrequencies[referenceIndex]) {
+      if (referenceIndex + 1 >= referenceFrequencies.size()) return {};
+      logReference = InterpolateLog(referenceFrequencies[referenceIndex], logReference,
+          referenceFrequencies[referenceIndex + 1],
+          std::log(referenceRms[referenceIndex + 1]), hz);
+    }
+    const double value = std::exp(std::log(rms[i]) - logReference);
+    if (!std::isfinite(value) || value <= 0.0) return {};
+    corrected.push_back(value);
+  }
+  return corrected;
+}

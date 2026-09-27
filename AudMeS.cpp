@@ -23,6 +23,7 @@
 #include <math.h>
 #include <cmath>
 #include <wx/dcmemory.h>
+#include <wx/datetime.h>
 #include <wx/filename.h>
 #include <wx/stdpaths.h>
 
@@ -50,6 +51,8 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
   EVT_TOGGLEBUTTON(ID_FRMSTART, MainFrame::OnFrmStart)
   EVT_CHECKBOX(ID_SWEEP_NORMALIZE, MainFrame::OnSweepViewChanged)
   EVT_CHOICE(ID_SWEEP_CHANNEL, MainFrame::OnSweepViewChanged)
+  EVT_CHECKBOX(ID_SWEEP_CORRECT, MainFrame::OnSweepViewChanged)
+  EVT_BUTTON(ID_SWEEP_REFERENCE, MainFrame::OnCaptureLoopback)
   EVT_MENU(wxID_ABOUT, MainFrame::OnAboutClick)
   EVT_MENU(wxID_EXIT, MainFrame::OnExitClick)
   EVT_CLOSE(MainFrame::OnClose)
@@ -311,6 +314,12 @@ MainFrame::MainFrame(wxWindow* parent, int id, const wxString& title, const wxPo
       wxT("右输出（通道组第 2 路）"), wxT("左右同时输出")};
   choice_frm_output = new wxChoice(notebook_1_frm, wxID_ANY, wxDefaultPosition,
                                    wxDefaultSize, 3, sweepOutputChoices);
+  checkbox_frm_correct = new wxCheckBox(notebook_1_frm, ID_SWEEP_CORRECT,
+                                        wxT("按本次会话 Loopback 基准补偿"));
+  button_frm_reference = new wxButton(notebook_1_frm, ID_SWEEP_REFERENCE,
+                                      wxT("将当前实测设为 Loopback 基准"));
+  label_frm_calibration = new wxStaticText(notebook_1_frm, wxID_ANY,
+      wxT("Loopback：尚无基准；需先完成直接回环扫频"));
   label_frm_summary = new wxStaticText(notebook_1_frm, wxID_ANY,
                                        wxT("−3 dB 截止点：等待扫频数据"));
   button_frm_start = new wxToggleButton(notebook_1_frm, ID_FRMSTART, wxT("开始扫频"));
@@ -348,6 +357,9 @@ void MainFrame::set_properties() {
   choice_frm_spacing->SetSelection(0);
   choice_frm_channel->SetSelection(0);
   choice_frm_output->SetSelection(0);
+  checkbox_frm_correct->SetValue(false);
+  checkbox_frm_correct->Enable(false);
+  button_frm_reference->Enable(false);
   checkbox_frm_normalize->SetValue(true);
   // end wxGlade
 }
@@ -1022,9 +1034,12 @@ void MainFrame::do_layout() {
   sizer_frm_prop->Add(new wxStaticText(notebook_1_frm, wxID_ANY, wxT("激励声道")),
                        0, wxLEFT | wxRIGHT | wxTOP, 5);
   sizer_frm_prop->Add(choice_frm_output, 0, wxALL | wxEXPAND, 5);
+  sizer_frm_prop->Add(button_frm_reference, 0, wxALL | wxEXPAND, 5);
+  sizer_frm_prop->Add(checkbox_frm_correct, 0, wxALL, 5);
   sizer_10_frm->Add(window_1_frm, 1, wxEXPAND, 0);
   sizer_10_frm->Add(sizer_frm_prop, 0, wxALL | wxEXPAND, 5);
   sizer_9_frm->Add(sizer_10_frm, 1, wxEXPAND, 0);
+  sizer_9_frm->Add(label_frm_calibration, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 8);
   sizer_9_frm->Add(label_frm_summary, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 8);
   sizer_9_frm->Add(button_frm_start, 0, wxALL | wxALIGN_CENTER_HORIZONTAL | wxALIGN_CENTER_VERTICAL,
                    5);
@@ -1099,6 +1114,12 @@ void MainFrame::set_custom_props() {
   frm_measure = 0;
   frm_istep = 0;
   frm_input_gain = 0.0;
+  m_sweepComplete = false;
+  m_sweepLevelDbfs = 0.0;
+  m_sweepRate = 0;
+  m_sweepRecordDev = 0;
+  m_sweepPlayDev = 0;
+  m_loopbackValid = false;
 
   m_configfilename = wxT("");
 
@@ -1246,6 +1267,8 @@ void MainFrame::OnLoadFRM(wxCommandEvent& WXUNUSED(event)) {
     frm_lgains.Add(gainl);
     frm_rgains.Add(gainr);
   }
+  m_sweepComplete = false;
+  button_frm_reference->Enable(false);
   if (frm_freqs.GetCount() >= 2 && frm_freqs[0] > 0.0 &&
       frm_freqs[frm_freqs.GetCount() - 1] > frm_freqs[0]) {
     window_1_frm->SetXRange(frm_freqs[0], frm_freqs[frm_freqs.GetCount() - 1],
@@ -1337,6 +1360,8 @@ void MainFrame::CalcFreqResponse() {
     }
   } else {
     frm_running = false;
+    m_sweepComplete = true;
+    button_frm_reference->Enable(true);
     window_1_frm->ShowUserText(wxString(""), 0, 0);
     button_frm_start->SetValue(false);
     button_frm_start->SetLabel(_T("开始扫频"));
@@ -1354,6 +1379,16 @@ void MainFrame::DrawFreqResponse(void) {
     leftRms.push_back(frm_lgains[i]);
     rightRms.push_back(frm_rgains[i]);
   }
+  bool corrected = false;
+  if (checkbox_frm_correct->GetValue() && m_sweepComplete && CurrentSweepMatchesLoopback()) {
+    std::vector<double>& selected = m_loopbackCaptureChannel == 0 ? leftRms : rightRms;
+    const std::vector<double> compensated = CorrectSweepRms(
+        frequencies, selected, m_loopbackFrequencies, m_loopbackRms);
+    if (!compensated.empty()) {
+      selected = compensated;
+      corrected = true;
+    }
+  }
   const SweepAnalysis leftResult = AnalyzeSweepChannel(frequencies, leftRms);
   const SweepAnalysis rightResult = AnalyzeSweepChannel(frequencies, rightRms);
   const bool normalized = checkbox_frm_normalize->GetValue();
@@ -1366,7 +1401,8 @@ void MainFrame::DrawFreqResponse(void) {
       right.Add(rightResult.levelsDb[i] -
                 (normalized && rightResult.hasReference ? rightResult.referenceDb : 0.0));
   }
-  const int channel = choice_frm_channel->GetSelection();
+  const int channel = corrected ? m_loopbackCaptureChannel + 1 :
+      choice_frm_channel->GetSelection();
   window_1_frm->SetTrack1(channel == 2 ? wxArrayDouble() : left);
   window_1_frm->SetTrack2(channel == 1 ? wxArrayDouble() : right);
   window_1_frm->SetTrackX(frm_freqs);
@@ -1374,8 +1410,8 @@ void MainFrame::DrawFreqResponse(void) {
       (channel == 1 ? leftResult.hasReference :
        channel == 2 ? rightResult.hasReference :
                       leftResult.hasReference && rightResult.hasReference);
-  window_1_frm->SetYRange(normalizedScale ? -40.0 : -80.0,
-                          normalized ? 10.0 : 0.0, 0);
+  window_1_frm->SetYRange(normalizedScale ? -40.0 : corrected ? -40.0 : -80.0,
+                          normalized ? 10.0 : corrected ? 60.0 : 0.0, 0);
 
   std::vector<CtrlOScope::Marker> markers;
   wxString summary;
@@ -1402,10 +1438,80 @@ void MainFrame::DrawFreqResponse(void) {
   }
   window_1_frm->SetMarkers(markers);
   label_frm_summary->SetLabel(summary.empty() ? wxT("−3 dB 截止点：等待扫频数据") : summary);
+  wxString calibrationStatus = wxT("Loopback：尚无基准；需先完成直接回环扫频");
+  if (m_loopbackValid) {
+    calibrationStatus = wxString::Format(wxT("Loopback 基准：%s输入 · %u Hz · %.0f dBFS · %s"),
+        m_loopbackCaptureChannel == 0 ? wxT("左") : wxT("右"), m_loopbackRate,
+        m_loopbackLevelDbfs, m_loopbackAt.c_str());
+    if (checkbox_frm_correct->GetValue()) {
+      calibrationStatus += corrected ? wxT(" · 已补偿当前曲线（相对 dB）") :
+          wxT(" · 当前曲线未补偿：等待完成或频段超出基准");
+    } else if (m_sweepComplete && !CurrentSweepMatchesLoopback()) {
+      calibrationStatus += wxT(" · 测量条件不符，显示原始曲线");
+    }
+  }
+  if (label_frm_calibration->GetLabel() != calibrationStatus)
+    label_frm_calibration->SetLabel(calibrationStatus);
   window_1_frm->Refresh();
 }
 
+bool MainFrame::CurrentSweepMatchesLoopback() const {
+  return m_loopbackValid && m_SamplingFreq == m_loopbackRate &&
+      m_RecordDev == m_loopbackRecordDev && m_PlayDev == m_loopbackPlayDev &&
+      frm_output_channel == m_loopbackOutputChannel &&
+      std::fabs(m_sweepLevelDbfs - m_loopbackLevelDbfs) < 1e-6;
+}
+
+void MainFrame::OnCaptureLoopback(wxCommandEvent& WXUNUSED(event)) {
+  if (frm_running || !m_sweepComplete || frm_freqs.GetCount() < 2) return;
+  std::vector<double> frequencies, left, right;
+  for (size_t i = 0; i < frm_freqs.GetCount(); ++i) {
+    frequencies.push_back(frm_freqs[i]);
+    left.push_back(frm_lgains[i]);
+    right.push_back(frm_rgains[i]);
+  }
+  const SweepAnalysis leftAnalysis = AnalyzeSweepChannel(frequencies, left);
+  const SweepAnalysis rightAnalysis = AnalyzeSweepChannel(frequencies, right);
+  int channel = choice_frm_channel->GetSelection() - 1;
+  if (channel < 0) {
+    if (leftAnalysis.hasReference && rightAnalysis.hasReference &&
+        leftAnalysis.referenceDb > rightAnalysis.referenceDb + 14.0) channel = 0;
+    else if (leftAnalysis.hasReference && rightAnalysis.hasReference &&
+             rightAnalysis.referenceDb > leftAnalysis.referenceDb + 14.0) channel = 1;
+  }
+  const SweepAnalysis& selectedAnalysis = channel == 1 ? rightAnalysis : leftAnalysis;
+  if (channel < 0 || !selectedAnalysis.hasReference || selectedAnalysis.referenceDb < -100.0) {
+    wxMessageBox(wxT("无法确认有信号的回环输入。请选择“左声道”或“右声道”，"
+                     "并确认 1 kHz 回传高于底噪后再保存基准。"),
+                 wxT("Loopback 基准无效"), wxOK | wxICON_WARNING, this);
+    return;
+  }
+  if (wxMessageBox(wxT("请确认当前是音频接口直接回环接线，未经过 SA-440F5。\n"
+                       "本次会话的基准将记录当前输入、输出、采样率和数字激励电平。"),
+                   wxT("记录 Loopback 基准"), wxYES_NO | wxICON_QUESTION, this) != wxYES) return;
+
+  m_loopbackFrequencies = frequencies;
+  m_loopbackRms = channel == 0 ? left : right;
+  m_loopbackCaptureChannel = channel;
+  m_loopbackOutputChannel = frm_output_channel;
+  m_loopbackRate = m_sweepRate;
+  m_loopbackRecordDev = m_sweepRecordDev;
+  m_loopbackPlayDev = m_sweepPlayDev;
+  m_loopbackLevelDbfs = m_sweepLevelDbfs;
+  m_loopbackAt = wxDateTime::Now().FormatISOCombined(' ');
+  m_loopbackValid = true;
+  checkbox_frm_correct->Enable(true);
+  label_loopback_status->SetLabel(wxString::Format(
+      wxT("● 本次会话已记录%s输入基准 · %u Hz · %.0f dBFS"),
+      channel == 0 ? wxT("左") : wxT("右"), m_loopbackRate, m_loopbackLevelDbfs));
+  notebook_1_home->Layout();
+  DrawFreqResponse();
+}
+
 void MainFrame::OnSweepViewChanged(wxCommandEvent& WXUNUSED(event)) {
+  if (checkbox_frm_correct->GetValue() && m_loopbackValid)
+    choice_frm_channel->SetSelection(m_loopbackCaptureChannel + 1);
+  choice_frm_channel->Enable(!checkbox_frm_correct->GetValue());
   DrawFreqResponse();
 }
 
@@ -1824,6 +1930,18 @@ void MainFrame::OnFrmStart(wxCommandEvent& WXUNUSED(event)) {
     frm_plan = plan;
     frm_input_gain = pow(10.0, levelDbfs / 20.0);
     frm_output_channel = choice_frm_output->GetSelection();
+    m_sweepLevelDbfs = levelDbfs;
+    m_sweepRate = m_SamplingFreq;
+    m_sweepRecordDev = m_RecordDev;
+    m_sweepPlayDev = m_PlayDev;
+    const bool matchingBaseline = CurrentSweepMatchesLoopback();
+    checkbox_frm_correct->Enable(matchingBaseline);
+    if (!matchingBaseline) {
+      checkbox_frm_correct->SetValue(false);
+      choice_frm_channel->Enable(true);
+    }
+    m_sweepComplete = false;
+    button_frm_reference->Enable(false);
     frm_ipoints = static_cast<int>(frm_plan.size());
     frm_istep = 0;
 
