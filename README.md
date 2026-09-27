@@ -17,6 +17,14 @@
 
 📌 [查看中文开发计划](docs/DEVELOPMENT_PLAN_CN.md)
 
+### FFT 读数说明
+
+FFT 页面以左声道单帧数据计算基波、H2–H5、THD、THD+N、SINAD、SNR 和底噪。
+功率积分范围为 20 Hz–20 kHz（采样率不足时截止到 Nyquist），基波与谐波使用
+与窗函数匹配的保护频带；SNR 排除这些频带，THD+N 只排除基波频带。
+幅度使用满幅正弦信号为 0 dBFS；底噪单位为 dBFS/Hz。未完成 Loopback 和输入增益
+校准前，这些数字不能换算成 DUT 输入端电压噪声。
+
 ## Windows 中文预览版一键构建
 
 先安装 64 位 MSYS2 及 MinGW64 工具链，然后在资源管理器中双击

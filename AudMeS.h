@@ -249,6 +249,8 @@ class MainFrame : public wxFrame {
   wxStaticText* label_fft_freq_value;
   wxStaticText* label_fft_mag_value;
   wxStaticText* label_harmonics_value;
+  wxStaticText* label_thdn_sinad_value;
+  wxStaticText* label_snr_noise_value;
 
   wxStaticText* label_sa_step_counter;
   wxStaticText* label_sa_step_title;

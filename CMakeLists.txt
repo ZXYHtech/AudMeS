@@ -16,6 +16,8 @@ set(CPP_SOURCES
 	RWAudio_IO.h
 	sma_2d.cpp
 	sma_2d.h
+	spectrum_metrics.cpp
+	spectrum_metrics.h
 	event_ids.h
 	)
 
@@ -27,6 +29,7 @@ set(AM_SOURCES
 	fourier.h
 	)
 
+enable_testing()
 add_subdirectory (tests)
 
 include_directories(.) # for local libfccp

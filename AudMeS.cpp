@@ -37,6 +37,7 @@
 #include "dlg_audiointerface.h"
 #include "event_ids.h"
 #include "fourier.h"
+#include "spectrum_metrics.h"
 
 wxIMPLEMENT_CLASS(MainFrame, wxFrame);
 
@@ -275,6 +276,10 @@ MainFrame::MainFrame(wxWindow* parent, int id, const wxString& title, const wxPo
   label_thd_value = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("THD  -- %"));
   label_harmonics_value = new wxStaticText(
       notebook_1_spe, wxID_ANY, wxT("H2  -- dBc · H3  -- dBc · H4  -- dBc · H5  -- dBc"));
+  label_thdn_sinad_value = new wxStaticText(
+      notebook_1_spe, wxID_ANY, wxT("THD+N  -- % · SINAD  -- dB"));
+  label_snr_noise_value = new wxStaticText(
+      notebook_1_spe, wxID_ANY, wxT("SNR  -- dB · 底噪  -- dBFS/Hz（20 Hz–20 kHz）"));
 
 
   /* Frequency response */
@@ -923,11 +928,15 @@ void MainFrame::do_layout() {
   label_fft_mag_value->SetFont(metricFont);
   label_thd_value->SetFont(metricFont);
   label_harmonics_value->SetFont(metricFont);
+  label_thdn_sinad_value->SetFont(metricFont);
+  label_snr_noise_value->SetFont(metricFont);
   sizer_spe_metrics->Add(label_fft_freq_value, 1, wxALL | wxALIGN_CENTER_VERTICAL, 8);
   sizer_spe_metrics->Add(label_fft_mag_value, 1, wxALL | wxALIGN_CENTER_VERTICAL, 8);
   sizer_spe_metrics->Add(label_thd_value, 1, wxALL | wxALIGN_CENTER_VERTICAL, 8);
   sizer_spe_9->Add(sizer_spe_metrics, 0, wxLEFT | wxRIGHT | wxEXPAND, 8);
   sizer_spe_9->Add(label_harmonics_value, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 16);
+  sizer_spe_9->Add(label_thdn_sinad_value, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 16);
+  sizer_spe_9->Add(label_snr_noise_value, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 16);
   sizer_spe_9->Add(button_spe_start, 0, wxALL | wxALIGN_CENTER_HORIZONTAL | wxALIGN_CENTER_VERTICAL,
                    8);
   notebook_1_spe->SetAutoLayout(true);
@@ -1332,8 +1341,10 @@ void MainFrame::DrawSpectrum(void) {
   }
 
   double dval = 0.0;
-  double dmax = 0.0;
   double dval_db = 0.0;
+  double windowSumSquares = 0.0;
+  for (int i = 0; i < nsampl; ++i) windowSumSquares += windowf[i] * windowf[i];
+  std::vector<double> powerBins(nsampl / 2, 0.0);
 
   // left channel
   double offsetL = calc_dc(g_SpeBuffer_Left, nsampl);
@@ -1347,8 +1358,11 @@ void MainFrame::DrawSpectrum(void) {
     for (int i = 1; i < nsampl / 2; i++) {
       // multiply amplitude by 2 to compensate
       dval = 2 * sqrt(realout[i] * realout[i] + imagout[i] * imagout[i]);
+      powerBins[i] = 2.0 * (realout[i] * realout[i] + imagout[i] * imagout[i]) /
+                     (nsampl * windowSumSquares);
       m_SMASpeLeft->AddVal(i, dval);
-      dval_db = 20.0 * log10(m_SMASpeLeft->GetSMA(i));
+      const double averaged = m_SMASpeLeft->GetSMA(i);
+      dval_db = averaged > 0.0 ? 20.0 * log10(averaged) : -150.0;
       spe_lmagns.Add(dval_db);
     }
   } else {
@@ -1358,60 +1372,51 @@ void MainFrame::DrawSpectrum(void) {
     }
   }
 
-  /* find frequency index with highest amplitude */
-  int fmax = 0;
-  for (int i = 0; i < nsampl / 2; i++) {
-    if (m_SMASpeLeft->GetSMA(i) > dmax) {
-      dmax = m_SMASpeLeft->GetSMA(i);
-      fmax = i;
-    }
+  const SpectrumMetrics metrics =
+      AnalyzeSpectrum(powerBins, nsampl, m_SamplingFreq, choice_fft->GetSelection());
+  wxString harmonics;
+  for (int harmonic = 2; harmonic <= 5; ++harmonic) {
+    if (harmonic > 2) harmonics += wxT(" · ");
+    harmonics += metrics.hasHarmonic[harmonic - 2]
+                     ? wxString::Format(wxT("H%d  %.2f dBc"), harmonic,
+                                        metrics.harmonicsDbc[harmonic - 2])
+                     : wxString::Format(wxT("H%d  -- dBc"), harmonic);
   }
-
-  /* use that frequency as base and calculate distortion
-   * but only if the magnitude is above -90 db
-   */
-  double freq = 0.0;
-  double thd = 0.0;
-  double thdval[10] = {0.0};
-  if (fmax > 0 && dmax > 0.00003) {
-    freq = (double)fmax * m_SamplingFreq / nsampl;
-    for (int i = 0; i < 10; i++) {
-      int j = fmax * (i + 1);
-      if (j < nsampl / 2)
-        thdval[i] = m_SMASpeLeft->GetSMA(j);
-      else
-        thdval[i] = 0.0;
-    }
-    double harmonicPower = 0.0;
-    for (int i = 1; i < 10; ++i) harmonicPower += thdval[i] * thdval[i];
-    if (thdval[0] > 0.0) thd = 100.0 * sqrt(harmonicPower) / thdval[0];
-  }
-
-  /* display base frequency, magnitude and distortion */
-  const double magnitudeDb = thdval[0] > 0.0 ? 20.0 * log10(thdval[0]) : -150.0;
-  double harmonicDbc[4] = {-150.0, -150.0, -150.0, -150.0};
-  if (thdval[0] > 0.0) {
-    for (int i = 0; i < 4; ++i) {
-      if (thdval[i + 1] > 0.0) harmonicDbc[i] = 20.0 * log10(thdval[i + 1] / thdval[0]);
-    }
-  }
-  label_fft_freq_value->SetLabel(wxString::Format(wxT("基波  %.2f Hz"), freq));
-  label_fft_mag_value->SetLabel(wxString::Format(wxT("幅度  %.2f dBFS"), magnitudeDb));
-  label_thd_value->SetLabel(wxString::Format(wxT("THD  %.6f %%"), thd));
-  label_harmonics_value->SetLabel(wxString::Format(
-      wxT("H2  %.2f dBc · H3  %.2f dBc · H4  %.2f dBc · H5  %.2f dBc"), harmonicDbc[0],
-      harmonicDbc[1], harmonicDbc[2], harmonicDbc[3]));
-  if (freq > 0.0) {
+  label_harmonics_value->SetLabel(harmonics);
+  label_thdn_sinad_value->SetLabel(
+      metrics.hasThdn
+          ? wxString::Format(wxT("THD+N  %.6f %% · SINAD  %.2f dB"),
+                             metrics.thdnPercent, metrics.sinadDb)
+          : wxString(wxT("THD+N  -- % · SINAD  -- dB")));
+  const wxString snr = metrics.hasSnr
+                           ? wxString::Format(wxT("%.2f dB"), metrics.snrDb)
+                           : wxString(wxT("-- dB"));
+  const wxString noise = metrics.hasNoiseFloor
+                             ? wxString::Format(wxT("%.2f dBFS/Hz"),
+                                                metrics.noiseFloorDbfsPerHz)
+                             : wxString(wxT("-- dBFS/Hz"));
+  label_snr_noise_value->SetLabel(
+      wxString::Format(wxT("SNR  %s · 底噪  %s（20 Hz–20 kHz）"), snr.c_str(), noise.c_str()));
+  if (metrics.hasFundamental) {
+    label_fft_freq_value->SetLabel(
+        wxString::Format(wxT("基波  %.2f Hz"), metrics.fundamentalHz));
+    label_fft_mag_value->SetLabel(
+        wxString::Format(wxT("幅度  %.2f dBFS"), metrics.fundamentalDbfs));
+    label_thd_value->SetLabel(
+        wxString::Format(wxT("THD  %.6f %%"), metrics.thdPercent));
     label_latest_result->SetLabel(wxString::Format(
-        wxT("FFT / THD · 基波 %.2f Hz · 幅度 %.2f dBFS · THD %.6f %% · %u Hz"), freq,
-        magnitudeDb, thd, m_SamplingFreq));
+        wxT("FFT / THD · 基波 %.2f Hz · 幅度 %.2f dBFS · THD %.6f %% · %u Hz"),
+        metrics.fundamentalHz, metrics.fundamentalDbfs, metrics.thdPercent, m_SamplingFreq));
   } else {
-    label_latest_result->SetLabel(wxT("FFT / THD · 暂未检测到高于 -90 dBFS 的有效基波"));
+    label_fft_freq_value->SetLabel(wxT("基波  -- Hz"));
+    label_fft_mag_value->SetLabel(wxT("幅度  -- dBFS"));
+    label_thd_value->SetLabel(wxT("THD  -- %"));
+    label_latest_result->SetLabel(wxT("FFT / THD · 暂未检测到可分析的基波"));
   }
   wxString freqency;
-  freqency.Printf(wxT("基波 %.2f Hz · 幅度 %.2f dBFS · THD %.6f %% · 平均 %d/%d"), freq,
-                  magnitudeDb, thd, m_SMASpeLeft->GetNumSummed(1),
-                  m_SMASpeLeft->GetNumAverage());
+  freqency.Printf(wxT("基波 %.2f Hz · 幅度 %.2f dBFS · THD %.6f %% · 平均 %d/%d"),
+                  metrics.fundamentalHz, metrics.fundamentalDbfs, metrics.thdPercent,
+                  m_SMASpeLeft->GetNumSummed(1), m_SMASpeLeft->GetNumAverage());
   frame_1_statusbar->SetStatusText(freqency);
 
   // right channel
@@ -1426,7 +1431,8 @@ void MainFrame::DrawSpectrum(void) {
     for (int i = 1; i < nsampl / 2; i++) {
       dval = 2 * sqrt(realout[i] * realout[i] + imagout[i] * imagout[i]);
       m_SMASpeRight->AddVal(i, dval);
-      dval_db = (20.0 * log10(m_SMASpeRight->GetSMA(i)));
+      const double averaged = m_SMASpeRight->GetSMA(i);
+      dval_db = averaged > 0.0 ? 20.0 * log10(averaged) : -150.0;
       spe_rmagns.Add(dval_db);
     }
   } else {

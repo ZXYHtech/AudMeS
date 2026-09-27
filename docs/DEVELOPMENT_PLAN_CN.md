@@ -117,16 +117,20 @@ Codex 执行通道会阻塞 GCC 启动汇编器的子进程链，下面的完整
 - [x] 基波幅度
 - [x] H2 / H3 / H4 / H5
 - [x] THD
-- [ ] THD+N
-- [ ] SINAD
-- [ ] SNR
-- [ ] Noise Floor
+- [x] THD+N（20 Hz–20 kHz，排除基波频带）
+- [x] SINAD（同一带宽）
+- [x] SNR（排除基波与谐波频带）
+- [x] Noise Floor（中位数功率谱密度，dBFS/Hz）
 - [ ] Peak Hold
 - [x] Average
 - [x] Hann / Blackman-Harris 等窗函数
 - [x] 32768 / 65536 / 131072 / 262144 点 FFT
 - [ ] dBFS / Vrms 显示模式
 - [x] CSV 导出
+
+上述新读数基于左声道单帧 FFT，以满幅正弦 RMS 功率为 0 dBFS；
+在 20 Hz–20 kHz 内积分，窗函数主瓣周围留保护频点。读数尚未做 Loopback 校准，
+底噪是数字域功率谱密度，不能直接当作输入端 nV/√Hz。
 
 ### Sweep
 
@@ -314,17 +318,17 @@ guide_assets/
 ### THD
 
 - [x] 修正为 RMS harmonic sum
-- [ ] 基波插值，降低 FFT bin 不对齐误差
-- [ ] 谐波搜索窗口而非单 bin
-- [ ] 自动排除超过 Nyquist 的谐波
+- [x] 基波插值，降低 FFT bin 不对齐误差
+- [x] 谐波搜索窗口而非单 bin
+- [x] 自动排除超过 Nyquist 的谐波
 - [ ] H2–H10 独立显示
 
 ### THD+N
 
-- [ ] 基波 notch / 排除
+- [x] 基波 notch / 排除
 - [ ] 带宽可选：20 Hz–20 kHz 等
 - [ ] A-weighting 可选
-- [ ] THD+N dB / %
+- [ ] THD+N dB / %（当前只有 %）
 
 ### Noise
 

@@ -23,6 +23,7 @@ jobs:
           cd build
           cmake ..
           cmake --build . --target package
+          ctest --output-on-failure
 
       - name: Archive build result
         uses: actions/upload-artifact@v6
@@ -54,6 +55,7 @@ jobs:
           cd build
           cmake ..
           cmake --build . --target package
+          ctest --output-on-failure
 
       - name: Archive build result
         uses: actions/upload-artifact@v6
@@ -96,6 +98,7 @@ jobs:
           cd build
           cmake ..
           cmake --build . --target package
+          ctest --output-on-failure
 
       - name: Archive build result
         uses: actions/upload-artifact@v6
