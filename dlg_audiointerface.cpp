@@ -100,16 +100,19 @@ void AudioInterfaceDialog::CreateControls() {
   itemDialog1->SetSizer(itemBoxSizer2);
 
   wxStaticBox* itemFreqStaticBox =
-      new wxStaticBox(itemDialog1, wxID_ANY, _("可用采样率 [Hz]"));
+      new wxStaticBox(itemDialog1, wxID_ANY, _(wxT("可用采样率 [Hz]")));
   wxStaticBoxSizer* itemFreqStaticBoxSizer = new wxStaticBoxSizer(itemFreqStaticBox, wxHORIZONTAL);
   itemBoxSizer2->Add(itemFreqStaticBoxSizer, 1, wxEXPAND | wxALL, 5);
   wxString* itemFreqChoiceStrings = NULL;
   wxChoice* itemFreqChoice = new wxChoice(itemDialog1, ID_FREQ_CHO, wxDefaultPosition,
                                           wxDefaultSize, 0, itemFreqChoiceStrings, 0);
   itemFreqStaticBoxSizer->Add(itemFreqChoice, 1, wxALIGN_CENTER_VERTICAL | wxALL, 5);
+  itemBoxSizer2->Add(new wxStaticText(itemDialog1, wxID_ANY,
+      wxT("WASAPI 测量使用 Windows 当前采样率。\n输入、输出须一致；需测 40 kHz 时请在系统中将两端设为 96 kHz。")),
+      0, wxALL, 8);
 
   wxStaticBox* itemStaticBoxSizer3Static =
-      new wxStaticBox(itemDialog1, wxID_ANY, _("输出音频设备"));
+      new wxStaticBox(itemDialog1, wxID_ANY, _(wxT("输出音频设备")));
   wxStaticBoxSizer* itemStaticBoxSizer3 =
       new wxStaticBoxSizer(itemStaticBoxSizer3Static, wxHORIZONTAL);
   itemBoxSizer2->Add(itemStaticBoxSizer3, 1, wxEXPAND | wxALL, 5);
@@ -120,7 +123,7 @@ void AudioInterfaceDialog::CreateControls() {
   itemStaticBoxSizer3->Add(itemChoice4, 1, wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
   wxStaticBox* itemStaticBoxSizer5Static =
-      new wxStaticBox(itemDialog1, wxID_ANY, _("输入音频设备"));
+      new wxStaticBox(itemDialog1, wxID_ANY, _(wxT("输入音频设备")));
   wxStaticBoxSizer* itemStaticBoxSizer5 =
       new wxStaticBoxSizer(itemStaticBoxSizer5Static, wxHORIZONTAL);
   itemBoxSizer2->Add(itemStaticBoxSizer5, 0, wxEXPAND | wxALL, 5);
@@ -134,13 +137,13 @@ void AudioInterfaceDialog::CreateControls() {
   itemBoxSizer2->Add(itemBoxSizer7, 0, wxALIGN_CENTER_HORIZONTAL | wxALL, 10);
 
   wxButton* itemButton8 =
-      new wxButton(itemDialog1, wxID_OK, _("确定"), wxDefaultPosition, wxDefaultSize, 0);
+      new wxButton(itemDialog1, wxID_OK, _(wxT("确定")), wxDefaultPosition, wxDefaultSize, 0);
   itemBoxSizer7->Add(itemButton8, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
   itemBoxSizer7->Add(5, 5, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
   wxButton* itemButton10 =
-      new wxButton(itemDialog1, wxID_CANCEL, _("取消"), wxDefaultPosition, wxDefaultSize, 0);
+      new wxButton(itemDialog1, wxID_CANCEL, _(wxT("取消")), wxDefaultPosition, wxDefaultSize, 0);
   itemBoxSizer7->Add(itemButton10, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
 
   ////@end AudioInterfaceDialog content construction
@@ -199,6 +202,7 @@ void AudioInterfaceDialog::SetDevices(RWAudioDevList devreclist, RWAudioDevList 
     }
   }
   p_cho->SetSelection(curSelection);
+  pldev = curSelection;
 
   p_cho = (wxChoice*)FindWindow(ID_INDEV_CHO);
   if (!p_cho) {
@@ -215,6 +219,7 @@ void AudioInterfaceDialog::SetDevices(RWAudioDevList devreclist, RWAudioDevList 
     }
   }
   p_cho->SetSelection(curSelection);
+  recdev = curSelection;
 
   p_cho = (wxChoice*)FindWindow(ID_FREQ_CHO);
   if (!p_cho) {
@@ -239,6 +244,7 @@ void AudioInterfaceDialog::SetDevices(RWAudioDevList devreclist, RWAudioDevList 
   if (p_cho->GetCount() > 0) {
     p_cho->SetSelection(cfreq);
   }
+  FindWindow(wxID_OK)->Enable(p_cho->GetCount() > 0);
   if (GetSizer()) {
     GetSizer()->SetSizeHints(this);
   }
@@ -314,4 +320,5 @@ void AudioInterfaceDialog::OnChoiceChanged(wxCommandEvent& WXUNUSED(event)) {
   if (p_cho->GetCount() > 0) {
     p_cho->SetSelection(cfreq);
   }
+  FindWindow(wxID_OK)->Enable(p_cho->GetCount() > 0);
 }

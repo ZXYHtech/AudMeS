@@ -206,6 +206,7 @@ class MainFrame : public wxFrame {
   wxChoice* choice_frm_spacing;
   wxCheckBox* checkbox_frm_normalize;
   wxChoice* choice_frm_channel;
+  wxChoice* choice_frm_output;
   wxStaticText* label_frm_summary;
   wxTextCtrl* text_ctrl2_frm;
   wxToggleButton* button_frm_start;
@@ -221,6 +222,7 @@ class MainFrame : public wxFrame {
   int frm_istep;
   int frm_measure;
   double frm_input_gain;
+  int frm_output_channel;
   std::vector<double> frm_plan;
   double sweep_div;
 

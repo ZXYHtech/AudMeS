@@ -307,6 +307,10 @@ MainFrame::MainFrame(wxWindow* parent, int id, const wxString& title, const wxPo
   const wxString sweepChannelChoices[] = {wxT("左右声道"), wxT("左声道"), wxT("右声道")};
   choice_frm_channel = new wxChoice(notebook_1_frm, ID_SWEEP_CHANNEL, wxDefaultPosition,
                                     wxDefaultSize, 3, sweepChannelChoices);
+  const wxString sweepOutputChoices[] = {wxT("左输出（通道组第 1 路）"),
+      wxT("右输出（通道组第 2 路）"), wxT("左右同时输出")};
+  choice_frm_output = new wxChoice(notebook_1_frm, wxID_ANY, wxDefaultPosition,
+                                   wxDefaultSize, 3, sweepOutputChoices);
   label_frm_summary = new wxStaticText(notebook_1_frm, wxID_ANY,
                                        wxT("−3 dB 截止点：等待扫频数据"));
   button_frm_start = new wxToggleButton(notebook_1_frm, ID_FRMSTART, wxT("开始扫频"));
@@ -343,6 +347,7 @@ void MainFrame::set_properties() {
   choice_spe_dbdiv->SetSelection(2);
   choice_frm_spacing->SetSelection(0);
   choice_frm_channel->SetSelection(0);
+  choice_frm_output->SetSelection(0);
   checkbox_frm_normalize->SetValue(true);
   // end wxGlade
 }
@@ -542,6 +547,7 @@ void MainFrame::ApplyInstrumentTheme(wxWindow* root) {
   if (dynamic_cast<wxPanel*>(root) || root == this) root->SetBackgroundColour(panel);
   if (wxStaticBox* box = dynamic_cast<wxStaticBox*>(root)) box->SetForegroundColour(text);
   if (wxStaticText* st = dynamic_cast<wxStaticText*>(root)) st->SetForegroundColour(text);
+  if (wxCheckBox* cb = dynamic_cast<wxCheckBox*>(root)) cb->SetForegroundColour(text);
   if (wxButton* bt = dynamic_cast<wxButton*>(root)) {
     bt->SetForegroundColour(text);
     bt->SetBackgroundColour(wxColour(42, 52, 64));
@@ -641,6 +647,12 @@ void MainFrame::UpdateSA440F5Step() {
 
 void MainFrame::AutoDetectE4x4(bool showMessage) {
   if (!m_RWAudio) return;
+  if (frm_running || button_spe_start->GetValue() || button_gen_start->GetValue() ||
+      button_osc_start->GetValue()) {
+    wxMessageBox(wxT("请先停止测量，再重新检测音频接口。"), wxT("音频接口正在使用"),
+                   wxOK | wxICON_INFORMATION, this);
+    return;
+  }
   unsigned int rec = 0;
   unsigned int play = 0;
   unsigned int rate = 96000;
@@ -1005,6 +1017,9 @@ void MainFrame::do_layout() {
   sizer_frm_prop->Add(new wxStaticText(notebook_1_frm, wxID_ANY, wxT("显示声道")),
                        0, wxLEFT | wxRIGHT | wxTOP, 5);
   sizer_frm_prop->Add(choice_frm_channel, 0, wxALL | wxEXPAND, 5);
+  sizer_frm_prop->Add(new wxStaticText(notebook_1_frm, wxID_ANY, wxT("激励声道")),
+                       0, wxLEFT | wxRIGHT | wxTOP, 5);
+  sizer_frm_prop->Add(choice_frm_output, 0, wxALL | wxEXPAND, 5);
   sizer_10_frm->Add(window_1_frm, 1, wxEXPAND, 0);
   sizer_10_frm->Add(sizer_frm_prop, 0, wxALL | wxEXPAND, 5);
   sizer_9_frm->Add(sizer_10_frm, 1, wxEXPAND, 0);
@@ -1279,23 +1294,31 @@ void MainFrame::OnSincClick(wxCommandEvent& WXUNUSED(event)) {
 }
 
 void MainFrame::CalcFreqResponse() {
-  /* periodically called by OnTimer
-   * delays for measuring work by waiting for the next call
-   */
+  // Advance on completed capture records, not elapsed UI timer ticks.
   if (frm_istep < frm_ipoints) {
     const double freq = frm_plan[frm_istep];
 
     if (0 == frm_measure) {
       // play new frequency e.g. from 20Hz to 20kHz
       m_RWAudio->PlaySetGenerator(freq, freq, RWAudio::SINE, RWAudio::SINE,
-                                  frm_input_gain, frm_input_gain);
+                                  frm_output_channel == 1 ? 0.0 : frm_input_gain,
+                                  frm_output_channel == 0 ? 0.0 : frm_input_gain);
       wxString bla;
       bla.Printf(wxT("Frequency : %.1f "), freq);
       window_1_frm->ShowUserText(bla, 100, 20);
+      g_SpeBufferChanged.store(false);
+      frm_measure = 1;
+      return;
     }
-    if (1 == frm_measure) g_SpeBufferChanged.store(false);  // now get audio data
-
-    if (g_SpeBufferChanged.load() && frm_measure > 1) {
+    if (!g_SpeBufferChanged.load()) return;
+    if (frm_measure < 3) {
+      // The first record can contain old/partial FFT data and stream latency.
+      // Discard it and one full settling record before measuring this tone.
+      ++frm_measure;
+      g_SpeBufferChanged.store(false);
+      return;
+    }
+    {
       // new audio data has arrived
       double l_rms = 0;
       double r_rms = 0;
@@ -1307,10 +1330,9 @@ void MainFrame::CalcFreqResponse() {
       frm_freqs.Add(freq);
       frm_lgains.Add(sqrt(l_rms / m_SpeBufferLength));
       frm_rgains.Add(sqrt(r_rms / m_SpeBufferLength));
-      frm_measure = -1;  // zero after increment
+      frm_measure = 0;
       frm_istep++;
     }
-    frm_measure++;
   } else {
     frm_running = false;
     window_1_frm->ShowUserText(wxString(""), 0, 0);
@@ -1695,12 +1717,23 @@ void MainFrame::OnFFTScaleChanged(wxCommandEvent& WXUNUSED(event)) {
 
 void MainFrame::OnSpanStart(wxCommandEvent& WXUNUSED(event)) {
   if (button_spe_start->GetValue()) {
+    if (frm_running) {
+      button_spe_start->SetValue(false);
+      wxMessageBox(wxT("请先停止扫频，再开始 FFT。"), wxT("音频接口正在使用"),
+                     wxOK | wxICON_INFORMATION, this);
+      return;
+    }
     m_SMASpeLeft->SetNumRecords(m_SpeBufferLength >> 1);
     m_SMASpeRight->SetNumRecords(m_SpeBufferLength >> 1);
     spe_peak_lmagns.Clear();
     spe_peak_rmagns.Clear();
     button_spe_start->SetLabel(_T("停止 FFT"));
-    m_RWAudio->StartSnd();
+    if (m_RWAudio->StartSnd() != 0) {
+      button_spe_start->SetValue(false);
+      button_spe_start->SetLabel(wxT("开始 FFT"));
+      wxMessageBox(wxT("无法启动音频接口。请检查设备连接，并确保 Windows 输入、输出采样率一致。"),
+                     wxT("FFT 启动失败"), wxOK | wxICON_ERROR, this);
+    }
   } else {
     button_spe_start->SetLabel(_T("开始 FFT"));
     m_RWAudio->StopSnd();
@@ -1788,6 +1821,7 @@ void MainFrame::OnFrmStart(wxCommandEvent& WXUNUSED(event)) {
 
     frm_plan = plan;
     frm_input_gain = pow(10.0, levelDbfs / 20.0);
+    frm_output_channel = choice_frm_output->GetSelection();
     frm_ipoints = static_cast<int>(frm_plan.size());
     frm_istep = 0;
 
@@ -1938,6 +1972,12 @@ void MainFrame::TriggerSettings() {
 }
 
 void MainFrame::OnSelectSndCard(wxCommandEvent& WXUNUSED(event)) {
+  if (frm_running || button_spe_start->GetValue() || button_gen_start->GetValue() ||
+      button_osc_start->GetValue()) {
+    wxMessageBox(wxT("请先停止测量，再更改音频接口。"), wxT("音频接口正在使用"),
+                   wxOK | wxICON_INFORMATION, this);
+    return;
+  }
   unsigned int recdev, pldev;
   RWAudioDevList playDevList;
   RWAudioDevList recordDevList;

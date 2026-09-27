@@ -154,11 +154,34 @@ try {
     New-Item -ItemType Directory -Path $buildDir -Force | Out-Null
     New-Item -ItemType Directory -Path $distDir -Force | Out-Null
 
+    # Windows searches System32 before PATH. A third-party legacy zlib1.dll
+    # there can prevent GCC frontends/binutils from starting (0xc0000139).
+    # Stage these tools with their matching zlib without changing system DLLs.
+    $compilerRuntime = Join-Path $buildDir 'compiler-runtime'
+    New-Item -ItemType Directory -Path $compilerRuntime -Force | Out-Null
+    foreach ($toolName in @('cc1', 'cc1plus', 'collect2', 'lto1', 'lto-wrapper', 'as', 'ld')) {
+        $toolPath = (& $environmentInfo.GCC "-print-prog-name=$toolName").Trim()
+        if (-not (Test-Path -LiteralPath $toolPath -PathType Leaf)) {
+            $toolPath += '.exe'
+        }
+        if (-not (Test-Path -LiteralPath $toolPath -PathType Leaf)) {
+            throw "找不到编译组件：$toolName ($toolPath)"
+        }
+        Copy-Item -LiteralPath $toolPath -Destination (Join-Path $compilerRuntime "$toolName.exe") -Force
+    }
+    $ltoPlugin = (& $environmentInfo.GCC '-print-file-name=liblto_plugin.dll').Trim()
+    Copy-Item -LiteralPath $ltoPlugin -Destination $compilerRuntime -Force
+    Copy-Item -LiteralPath (Join-Path $environmentInfo.MingwBin 'zlib1.dll') -Destination $compilerRuntime -Force
+    $compilerPrefix = $compilerRuntime.Replace('\', '/') + '/'
+    $compilerFlags = '-B"{0}"' -f $compilerPrefix
+
     Invoke-CheckedCommand -FilePath $environmentInfo.CMake -Arguments @(
         '-S', $repoRoot,
         '-B', $buildDir,
         '-G', 'MinGW Makefiles',
-        '-DCMAKE_BUILD_TYPE=Release'
+        '-DCMAKE_BUILD_TYPE=Release',
+        "-DCMAKE_C_FLAGS=$compilerFlags",
+        "-DCMAKE_CXX_FLAGS=$compilerFlags"
     ) -Description '配置 Release 构建'
 
     Invoke-CheckedCommand -FilePath $environmentInfo.CMake -Arguments @(
@@ -166,6 +189,10 @@ try {
         '--target', 'package',
         '--parallel', $Jobs
     ) -Description '编译并生成 CPack ZIP'
+
+    Invoke-CheckedCommand -FilePath (Join-Path $environmentInfo.MingwBin 'ctest.exe') -Arguments @(
+        '--test-dir', $buildDir, '--output-on-failure'
+    ) -Description '运行算法回归测试'
 
     $cpackZip = Get-ChildItem -LiteralPath $buildDir -Filter 'AudMeS-*.zip' -File |
         Sort-Object LastWriteTimeUtc -Descending |

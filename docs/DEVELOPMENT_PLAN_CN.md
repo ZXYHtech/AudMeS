@@ -83,9 +83,11 @@ dist/
 - [x] 构建失败时给中文错误信息
 - [x] 可选：构建完成后自动启动 AudMeS.exe
 
-实现状态（2026-09-19）：脚本与文档已完成，Windows PowerShell 5 入口、清理流程及环境检查已验证；
-当前开发机已安装 MSYS2、MinGW64 GCC 16.2、CMake 4.4.3 与 wxWidgets 3.2.11。
-Codex 执行通道会阻塞 GCC 启动汇编器的子进程链，下面的完整编译、打包和启动验收仍待在普通 Windows 桌面会话中执行。
+实现状态（2026-09-27）：本机 Windows 11 Release 编译、CPack、便携包启动和两组算法测试已通过。
+工具链为 MinGW64 GCC 16.2、CMake 4.4.3、wxWidgets 3.2.11。
+此前编译阻塞已定位为 System32 中的旧 zlib1.dll 缺少入口点；构建脚本会在项目生成目录中
+隔离编译组件及配套 zlib，不修改系统 DLL。便携程序已在不含 MSYS2 的 PATH 下启动。
+这不等同于在另一台干净 Windows 电脑或 Windows 10 上完成验收。
 
 ### 验收
 
@@ -170,6 +172,10 @@ Codex 执行通道会阻塞 GCC 启动汇编器的子进程链，下面的完整
 ### Windows 音频后端
 
 当前 AudMeS 上游 Windows 构建主要使用 RtAudio 的 WASAPI / DirectSound 路径。
+
+2026-09-27 已实测 E4x4 耳机输出 1 → IN 3，WASAPI 共享模式、原生 44.1 kHz。
+后端会校验输入、输出的 Windows 实际采样率，避免把软件重采样误作硬件带宽。
+自动选择优先模拟输入和 Playback 1/2。详见 [本机实测记录](HARDWARE_TEST_2026-09-27.md)。
 
 后续验证：
 

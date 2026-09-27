@@ -33,6 +33,9 @@ Sweep 页面可设置 20 Hz–40 kHz 范围内的起止频率、2–120 个测�
 不是经校准的 DUT 输入端电压。扫频曲线可选择左右声道和 1 kHz 归一化，
 并显示相对 1 kHz 的双侧 −3 dB 截止点及图上标记。若测量范围未覆盖 1 kHz，
 这些相对指标不可用；CSV 仍保存原始 RMS，不包含归一化结果。
+激励声道可单独选择左、右或双路，默认仅左路。每次换频先丢弃两帧过渡采集数据。
+WASAPI 测量仅使用 Windows 输入、输出一致的实际采样率；要测 40 kHz，需先将两端
+的系统格式设为 96 kHz。不能通过软件重采样扩大声卡当前测量带宽。
 
 ## Windows 中文预览版一键构建
 
@@ -43,6 +46,10 @@ MinGW DLL。最终结果位于 `dist/`：
 
 - `AudMeS-cn-preview-win64/AudMeS.exe`
 - `AudMeS-YYYY.MM.DD-cn-preview-win64.zip`
+
+构建脚本隔离 GCC 组件及配套 zlib，以兼容系统目录存在旧 zlib1.dll 的电脑，
+并在交付前运行 FFT / Sweep 算法测试。2026-09-27 的编译及 E4x4 回环结果见
+[实测记录](docs/HARDWARE_TEST_2026-09-27.md)。
 
 只检查本机环境可运行：
 

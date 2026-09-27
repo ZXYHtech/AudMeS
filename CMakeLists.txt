@@ -121,6 +121,11 @@ if (MINGW)
 		${wxWidgets_LIBRARIES}
 		dsound ksuser mfplat mfuuid wmcodecdspuuid winmm ole32
 		)
+	# Hardware output is opt-in and is never registered as an unattended CTest.
+	add_executable(audio_hardware_probe EXCLUDE_FROM_ALL
+		tests/audio_hardware_probe.cpp RWAudio_IO.cpp rtaudio/RtAudio.cpp
+		fourier.c spectrum_metrics.cpp sweep_plan.cpp)
+	target_link_libraries(audio_hardware_probe dsound ksuser mfplat mfuuid wmcodecdspuuid winmm ole32)
 endif()
 
 set(CPACK_PACKAGE_VERSION_MAJOR "2026")

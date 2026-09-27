@@ -291,6 +291,7 @@ int inout(void *outputBuffer, void *inputBuffer, unsigned int nBufferFrames,
 }
 
 RWAudio::RWAudio() {
+  m_AudioDriver = nullptr;
   m_sampleRate = 0;
   stream_running = 0;
   m_channel = 0;
@@ -302,8 +303,9 @@ RWAudio::RWAudio() {
 }
 
 RWAudio::~RWAudio() {
-  m_AudioDriver->stopStream();
-  m_AudioDriver->closeStream();
+  // RtAudio owns stream shutdown. stopStream() on a closed stream throws,
+  // including when a user only enumerates devices and then exits.
+  delete m_AudioDriver;
 }
 
 /*
@@ -400,6 +402,16 @@ int RWAudio::StopSnd() {
  * Start audio stream
  */
 int RWAudio::StartAudio(int recDevId, int playDevId) {
+  if (m_AudioDriver->getCurrentApi() == RtAudio::WINDOWS_WASAPI) {
+    const auto input = m_AudioDriver->getDeviceInfo(recDevId);
+    const auto output = m_AudioDriver->getDeviceInfo(playDevId);
+    if (input.preferredSampleRate != m_sampleRate || output.preferredSampleRate != m_sampleRate) {
+      std::cerr << "Measurement requires matching WASAPI endpoint mix rates: input="
+                << input.preferredSampleRate << ", output=" << output.preferredSampleRate
+                << ", requested=" << m_sampleRate << std::endl;
+      return 1;
+    }
+  }
   // adapt to number of channels
   RtAudio::DeviceInfo info = m_AudioDriver->getDeviceInfo(recDevId);
   if (info.inputChannels > 1 || info.duplexChannels > 1)
@@ -500,6 +512,10 @@ int RWAudio::GetRWAudioDevices(RWAudioDevList *play, RWAudioDevList *record) {
     info = m_AudioDriver->getDeviceInfo(i);
 
     if (info.probed == true) {
+      // WASAPI advertises resampled rates, not native measurement bandwidth.
+      // Expose only the Windows endpoint mix rate to avoid misleading results.
+      if (m_AudioDriver->getCurrentApi() == RtAudio::WINDOWS_WASAPI)
+        info.sampleRates.assign(1, info.preferredSampleRate);
       //      std::cout << "device = " << i << "; name: " << info.name << "\n";
 
       // add play card
@@ -563,19 +579,24 @@ bool RWAudio::AutoDetectDevice(const std::vector<std::string>& nameHints,
     if (!info.probed) continue;
 
     const int score = scoreName(info.name);
-    if ((info.inputChannels > 0 || info.duplexChannels > 0) && score > bestRecordScore) {
-      bestRecordScore = score;
+    const std::string deviceName = lower(info.name);
+    const int recordScore = score > 0 && deviceName.find("analog") != std::string::npos ? score + 10 : score;
+    const int playScore = score > 0 && deviceName.find("playback 1/2") != std::string::npos ? score + 10 : score;
+    if ((info.inputChannels > 0 || info.duplexChannels > 0) && recordScore > bestRecordScore) {
+      bestRecordScore = recordScore;
       bestRecordId = i;
       bestRecordInfo = info;
     }
-    if ((info.outputChannels > 0 || info.duplexChannels > 0) && score > bestPlayScore) {
-      bestPlayScore = score;
+    if ((info.outputChannels > 0 || info.duplexChannels > 0) && playScore > bestPlayScore) {
+      bestPlayScore = playScore;
       bestPlayId = i;
       bestPlayInfo = info;
     }
   }
 
   if (bestRecordScore <= 0 || bestPlayScore <= 0) return false;
+  if (m_AudioDriver->getCurrentApi() == RtAudio::WINDOWS_WASAPI &&
+      bestRecordInfo.preferredSampleRate != bestPlayInfo.preferredSampleRate) return false;
 
   *recordDev = bestRecordId;
   *playDev = bestPlayId;
@@ -584,6 +605,10 @@ bool RWAudio::AutoDetectDevice(const std::vector<std::string>& nameHints,
     *matchedName += " / " + bestPlayInfo.name;
 
   *bestSampleRate = 48000;
+  if (m_AudioDriver->getCurrentApi() == RtAudio::WINDOWS_WASAPI) {
+    *bestSampleRate = bestRecordInfo.preferredSampleRate;
+    return true;
+  }
   const unsigned int preferredRates[] = {96000, 48000, 44100, 192000};
   for (unsigned int preferred : preferredRates) {
     const bool recSupports =
