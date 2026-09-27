@@ -51,7 +51,7 @@ bool ValidateLoopbackReference(const LoopbackReference& reference, std::string* 
       !SafeLine(reference.playDevice) || !SafeLine(reference.capturedAt))
     return Fail(error, "Missing or invalid device/API/time metadata.");
   if (reference.sampleRate < 8000 || reference.sampleRate > 384000 ||
-      reference.outputChannel < 0 || reference.outputChannel > 2 ||
+      reference.outputChannel < 0 || reference.outputChannel > 3 ||
       reference.captureChannel < 0 || reference.captureChannel > 1 ||
       !std::isfinite(reference.levelDbfs) || reference.levelDbfs < -80.0 ||
       reference.levelDbfs > -20.0)

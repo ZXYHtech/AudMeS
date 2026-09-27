@@ -70,6 +70,7 @@ class MainFrame : public wxFrame {
   void OnSweepViewChanged(wxCommandEvent& event);
   void OnCaptureLoopback(wxCommandEvent& event);
   void OnAutoLoopback(wxCommandEvent& event);
+  void OnAutoDifferentialLoopback(wxCommandEvent& event);
   bool CaptureLoopback(bool confirmWiring);
   void OnSaveLoopback(wxCommandEvent& event);
   void OnLoadLoopback(wxCommandEvent& event);
@@ -220,6 +221,7 @@ class MainFrame : public wxFrame {
   wxCheckBox* checkbox_frm_correct;
   wxButton* button_frm_reference;
   wxButton* button_frm_auto_reference;
+  wxButton* button_frm_diff_reference;
   wxButton* button_frm_save_reference;
   wxButton* button_frm_load_reference;
   wxStaticText* label_frm_calibration;
@@ -245,6 +247,8 @@ class MainFrame : public wxFrame {
   bool m_dualOutputValid;
   LoopbackReference m_dualOutput[2];
   double m_sweepLevelDbfs;
+  double m_sweepLeftPeak;
+  double m_sweepRightPeak;
   unsigned int m_sweepRate;
   unsigned int m_sweepRecordDev;
   unsigned int m_sweepPlayDev;

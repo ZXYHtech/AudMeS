@@ -64,6 +64,17 @@ int main() {
     std::cerr << "Mismatched dual-output inputs were accepted\n";
     return 1;
   }
+  original.outputChannel = 3;
+  if (!SerializeLoopbackReference(original, &serialized, &error) ||
+      !ParseLoopbackReference(serialized, &restored, &error) ||
+      restored.outputChannel != 3 ||
+      !LoopbackMatchesRoute(restored, original.api, original.recordDevice,
+                            original.playDevice, 44100, 3, -40.0) ||
+      LoopbackMatchesRoute(restored, original.api, original.recordDevice,
+                           original.playDevice, 44100, 1, -40.0)) {
+    std::cerr << "Differential output baseline was not kept separate\n";
+    return 1;
+  }
   original.rms[1] = 0.0;
   if (SerializeLoopbackReference(original, &serialized, &error)) {
     std::cerr << "Invalid reference signal was accepted\n";

@@ -55,6 +55,7 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
   EVT_CHECKBOX(ID_SWEEP_CORRECT, MainFrame::OnSweepViewChanged)
   EVT_BUTTON(ID_SWEEP_REFERENCE, MainFrame::OnCaptureLoopback)
   EVT_BUTTON(ID_SWEEP_AUTO_REFERENCE, MainFrame::OnAutoLoopback)
+  EVT_BUTTON(ID_SWEEP_DIFF_REFERENCE, MainFrame::OnAutoDifferentialLoopback)
   EVT_BUTTON(ID_SWEEP_SAVE_REFERENCE, MainFrame::OnSaveLoopback)
   EVT_BUTTON(ID_SWEEP_LOAD_REFERENCE, MainFrame::OnLoadLoopback)
   EVT_MENU(wxID_ABOUT, MainFrame::OnAboutClick)
@@ -315,15 +316,18 @@ MainFrame::MainFrame(wxWindow* parent, int id, const wxString& title, const wxPo
   choice_frm_channel = new wxChoice(notebook_1_frm, ID_SWEEP_CHANNEL, wxDefaultPosition,
                                     wxDefaultSize, 3, sweepChannelChoices);
   const wxString sweepOutputChoices[] = {wxT("左输出（通道组第 1 路）"),
-      wxT("右输出（通道组第 2 路）"), wxT("左右同时输出")};
+      wxT("右输出（通道组第 2 路）"), wxT("左右同相输出"),
+      wxT("左右反相输出（差分）")};
   choice_frm_output = new wxChoice(notebook_1_frm, wxID_ANY, wxDefaultPosition,
-                                   wxDefaultSize, 3, sweepOutputChoices);
+                                   wxDefaultSize, 4, sweepOutputChoices);
   checkbox_frm_correct = new wxCheckBox(notebook_1_frm, ID_SWEEP_CORRECT,
                                         wxT("按 Loopback 基准补偿"));
   button_frm_reference = new wxButton(notebook_1_frm, ID_SWEEP_REFERENCE,
                                       wxT("将当前实测设为 Loopback 基准"));
   button_frm_auto_reference = new wxButton(notebook_1_frm, ID_SWEEP_AUTO_REFERENCE,
                                            wxT("一键测量双输出基准"));
+  button_frm_diff_reference = new wxButton(notebook_1_frm, ID_SWEEP_DIFF_REFERENCE,
+                                          wxT("一键测量差分基准（反相）"));
   button_frm_save_reference = new wxButton(notebook_1_frm, ID_SWEEP_SAVE_REFERENCE,
                                           wxT("保存基准"));
   button_frm_load_reference = new wxButton(notebook_1_frm, ID_SWEEP_LOAD_REFERENCE,
@@ -1046,6 +1050,7 @@ void MainFrame::do_layout() {
                        0, wxLEFT | wxRIGHT | wxTOP, 5);
   sizer_frm_prop->Add(choice_frm_output, 0, wxALL | wxEXPAND, 5);
   sizer_frm_prop->Add(button_frm_auto_reference, 0, wxALL | wxEXPAND, 5);
+  sizer_frm_prop->Add(button_frm_diff_reference, 0, wxALL | wxEXPAND, 5);
   sizer_frm_prop->Add(button_frm_reference, 0, wxALL | wxEXPAND, 5);
   wxBoxSizer* referenceFiles = new wxBoxSizer(wxHORIZONTAL);
   referenceFiles->Add(button_frm_save_reference, 1, wxRIGHT | wxEXPAND, 4);
@@ -1135,6 +1140,8 @@ void MainFrame::set_custom_props() {
   m_autoLoopbackPhase = 0;
   m_dualOutputValid = false;
   m_sweepLevelDbfs = 0.0;
+  m_sweepLeftPeak = 0.0;
+  m_sweepRightPeak = 0.0;
   m_sweepRate = 0;
   m_sweepRecordDev = 0;
   m_sweepPlayDev = 0;
@@ -1346,7 +1353,10 @@ void MainFrame::CalcFreqResponse() {
       // play new frequency e.g. from 20Hz to 20kHz
       m_RWAudio->PlaySetGenerator(freq, freq, RWAudio::SINE, RWAudio::SINE,
                                   frm_output_channel == 1 ? 0.0 : frm_input_gain,
-                                  frm_output_channel == 0 ? 0.0 : frm_input_gain);
+                                  frm_output_channel == 0 ? 0.0 :
+                                      frm_output_channel == 3 ? -frm_input_gain : frm_input_gain);
+      // Synchronize both oscillator phases; a negative right gain makes L-R excitation.
+      m_RWAudio->PlaySetPhaseDiff(0.0f);
       wxString bla;
       bla.Printf(wxT("Frequency : %.1f "), freq);
       window_1_frm->ShowUserText(bla, 100, 20);
@@ -1370,6 +1380,25 @@ void MainFrame::CalcFreqResponse() {
       for (unsigned long int ii = 0; ii < m_SpeBufferLength; ii++) {
         l_rms += g_SpeBuffer_Left[ii] * g_SpeBuffer_Left[ii];
         r_rms += g_SpeBuffer_Right[ii] * g_SpeBuffer_Right[ii];
+        m_sweepLeftPeak = std::max(m_sweepLeftPeak,
+                                   static_cast<double>(std::fabs(g_SpeBuffer_Left[ii])));
+        m_sweepRightPeak = std::max(m_sweepRightPeak,
+                                    static_cast<double>(std::fabs(g_SpeBuffer_Right[ii])));
+      }
+      if (m_autoLoopback && m_sweepLeftPeak >= 0.98) {
+        frm_running = false;
+        m_autoLoopback = false;
+        m_autoLoopbackPhase = 0;
+        button_frm_start->SetValue(false);
+        button_frm_start->SetLabel(wxT("开始扫频"));
+        button_frm_auto_reference->Enable(true);
+        button_frm_diff_reference->Enable(true);
+        m_RWAudio->StopSnd();
+        SendGenSettings();
+        frame_1_statusbar->SetStatusText(wxT("输入峰值接近满幅，已停止基准测量"));
+        wxMessageBox(wxT("IN3 输入峰值接近满幅，测量已自动停止。请降低耳机输出音量或 IN3 增益后重测。"),
+                     wxT("输入削顶风险"), wxOK | wxICON_WARNING, this);
+        return;
       }
       frm_freqs.Add(freq);
       frm_lgains.Add(sqrt(l_rms / m_SpeBufferLength));
@@ -1408,7 +1437,7 @@ void MainFrame::CalcFreqResponse() {
           return;
         }
         m_autoLoopback = false;
-      } else {
+      } else if (autoPhase == 1) {
         m_dualOutput[1] = CurrentLoopbackReference();
         std::string error;
         if (ValidateDualOutputReferences(m_dualOutput[0], m_dualOutput[1], &error)) {
@@ -1421,12 +1450,18 @@ void MainFrame::CalcFreqResponse() {
         } else {
           frame_1_statusbar->SetStatusText(wxT("双输出基准条件不一致 · 请重新测量"));
         }
+      } else {
+        m_dualOutputValid = false;
+        DrawFreqResponse();
+        frame_1_statusbar->SetStatusText(
+            wxT("反相差分基准已记录 · 点击“保存基准”单独留存"));
       }
     } else if (autoLoopback) {
       frame_1_statusbar->SetStatusText(wxT("回环信号无效 · 未建立双输出基准"));
     }
     m_autoLoopbackPhase = 0;
     button_frm_auto_reference->Enable(true);
+    button_frm_diff_reference->Enable(true);
   }
 }
 
@@ -1510,8 +1545,9 @@ void MainFrame::DrawFreqResponse(void) {
     if (checkbox_frm_correct->GetValue())
       calibrationStatus += corrected ? wxT(" · 当前输出已补偿") : wxT(" · 当前曲线未补偿");
   } else if (m_loopbackValid) {
-    calibrationStatus = wxString::Format(wxT("Loopback 基准：%s输入 · %u Hz · %.0f dBFS · %s"),
-        m_loopbackCaptureChannel == 0 ? wxT("左") : wxT("右"), m_loopbackRate,
+    calibrationStatus = wxString::Format(wxT("Loopback 基准：%s输入%s · %u Hz · %.0f dBFS · %s"),
+        m_loopbackCaptureChannel == 0 ? wxT("左") : wxT("右"),
+        m_loopbackOutputChannel == 3 ? wxT(" · 左右反相差分") : wxT(""), m_loopbackRate,
         m_loopbackLevelDbfs, m_loopbackAt.c_str());
     if (checkbox_frm_correct->GetValue()) {
       calibrationStatus += corrected ? wxT(" · 已补偿当前曲线（相对 dB）") :
@@ -1591,6 +1627,11 @@ bool MainFrame::CaptureLoopback(bool confirmWiring) {
                  wxT("Loopback 基准无效"), wxOK | wxICON_WARNING, this);
     return false;
   }
+  if ((channel == 0 ? m_sweepLeftPeak : m_sweepRightPeak) >= 0.98) {
+    wxMessageBox(wxT("本次扫频输入峰值接近满幅，不能作为基准。请降低耳机音量或 IN3 增益后重测。"),
+                 wxT("Loopback 基准无效"), wxOK | wxICON_WARNING, this);
+    return false;
+  }
   std::string recordName, playName, error;
   if (!GetSelectedDeviceNames(m_sweepRecordDev, m_sweepPlayDev, &recordName, &playName)) {
     wxMessageBox(wxT("找不到本次扫频所用的音频接口，请重新检测设备并测量。"),
@@ -1633,8 +1674,10 @@ bool MainFrame::CaptureLoopback(bool confirmWiring) {
   checkbox_frm_correct->Enable(true);
   button_frm_save_reference->Enable(true);
   label_loopback_status->SetLabel(wxString::Format(
-      wxT("● 本次会话已记录%s输入基准 · %u Hz · %.0f dBFS"),
-      channel == 0 ? wxT("左") : wxT("右"), m_loopbackRate, m_loopbackLevelDbfs));
+      wxT("● 本次会话已记录%s输入%s基准 · %u Hz · %.0f dBFS"),
+      channel == 0 ? wxT("左") : wxT("右"),
+      frm_output_channel == 3 ? wxT("反相差分") : wxT(""),
+      m_loopbackRate, m_loopbackLevelDbfs));
   notebook_1_home->Layout();
   DrawFreqResponse();
   return true;
@@ -1681,6 +1724,7 @@ void MainFrame::OnAutoLoopback(wxCommandEvent& WXUNUSED(event)) {
   m_autoLoopback = true;
   m_autoLoopbackPhase = 0;
   button_frm_auto_reference->Enable(false);
+  button_frm_diff_reference->Enable(false);
   button_frm_start->SetValue(true);
   wxCommandEvent startEvent(wxEVT_TOGGLEBUTTON, ID_FRMSTART);
   OnFrmStart(startEvent);
@@ -1688,6 +1732,53 @@ void MainFrame::OnAutoLoopback(wxCommandEvent& WXUNUSED(event)) {
     m_autoLoopback = false;
     m_autoLoopbackPhase = 0;
     button_frm_auto_reference->Enable(true);
+    button_frm_diff_reference->Enable(true);
+  }
+}
+
+void MainFrame::OnAutoDifferentialLoopback(wxCommandEvent& WXUNUSED(event)) {
+  if (frm_running || button_spe_start->GetValue() || button_gen_start->GetValue() ||
+      button_osc_start->GetValue()) {
+    wxMessageBox(wxT("请先停止其他测量，再开始差分基准测量。"),
+                 wxT("音频接口正在使用"), wxOK | wxICON_WARNING, this);
+    return;
+  }
+  std::string recordName, playName;
+  if (!GetSelectedDeviceNames(m_RecordDev, m_PlayDev, &recordName, &playName) ||
+      m_RWAudio->GetCurrentApiName() != "wasapi" ||
+      recordName.find("E4x4") == std::string::npos ||
+      recordName.find("Analog 3/4") == std::string::npos ||
+      playName.find("E4x4") == std::string::npos ||
+      playName.find("Playback 1/2") == std::string::npos ||
+      m_SamplingFreq < 44100) {
+    wxMessageBox(wxT("差分基准只支持当前已验证的 E4x4 Pre WASAPI Playback 1/2 → Analog 3/4 路由，采样率至少 44.1 kHz。"),
+                 wxT("音频接口不匹配"), wxOK | wxICON_WARNING, this);
+    return;
+  }
+  if (wxMessageBox(wxT("请确认前耳机输出 1 仍以一根 TRS 线直接连接 IN3、未经过被测设备；48 V 和直接监听均已关闭，输出音量及输入增益处于安全位置。\n\n软件会令左、右输出等幅反相，各为 −40 dBFS，以 20 Hz–20 kHz、24 点测量同一 IN3。差分回传可能比单路高约 6 dB；若输入削顶请立即停止。此基准须单独保存，不能代替单路或绝对电压校准。"),
+                   wxT("确认差分回环接线"), wxYES_NO | wxICON_QUESTION, this) != wxYES) return;
+  text_ctrl_frm_start->SetValue(wxT("20"));
+  text_ctrl_frm_end->SetValue(wxT("20000"));
+  text_ctrl1_frm->SetValue(wxT("24"));
+  text_ctrl_frm_level->SetValue(wxT("-40"));
+  choice_frm_spacing->SetSelection(0);
+  choice_frm_channel->SetSelection(1);
+  choice_frm_output->SetSelection(3);
+  checkbox_frm_correct->SetValue(false);
+  choice_frm_channel->Enable(true);
+  m_dualOutputValid = false;
+  m_autoLoopback = true;
+  m_autoLoopbackPhase = 2;
+  button_frm_auto_reference->Enable(false);
+  button_frm_diff_reference->Enable(false);
+  button_frm_start->SetValue(true);
+  wxCommandEvent startEvent(wxEVT_TOGGLEBUTTON, ID_FRMSTART);
+  OnFrmStart(startEvent);
+  if (!frm_running) {
+    m_autoLoopback = false;
+    m_autoLoopbackPhase = 0;
+    button_frm_auto_reference->Enable(true);
+    button_frm_diff_reference->Enable(true);
   }
 }
 
@@ -1704,7 +1795,8 @@ void MainFrame::OnSaveLoopback(wxCommandEvent& WXUNUSED(event)) {
   }
   wxFileDialog dialog(this, wxT("保存 Loopback 基准"), wxEmptyString,
       m_dualOutputValid ? wxT("E4x4-dual-output.audmes-loopback") :
-                          wxT("E4x4-loopback.audmes-loopback"),
+          m_loopbackOutputChannel == 3 ? wxT("E4x4-differential.audmes-loopback") :
+                                           wxT("E4x4-loopback.audmes-loopback"),
       wxT("AudMeS Loopback (*.audmes-loopback)|*.audmes-loopback"),
       wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
   if (dialog.ShowModal() != wxID_OK) return;
@@ -1794,8 +1886,9 @@ void MainFrame::OnLoadLoopback(wxCommandEvent& WXUNUSED(event)) {
   checkbox_frm_correct->Enable(true);
   label_loopback_status->SetLabel(dualFile ?
       wxT("● 已载入双输出基准 · 同一 IN3 差分回传") : wxString::Format(
-      wxT("● 已载入%s输入基准 · %u Hz · %.0f dBFS"),
+      wxT("● 已载入%s输入%s基准 · %u Hz · %.0f dBFS"),
       reference.captureChannel == 0 ? wxT("左") : wxT("右"),
+      reference.outputChannel == 3 ? wxT("反相差分") : wxT(""),
       reference.sampleRate, reference.levelDbfs));
   notebook_1_home->Layout();
   DrawFreqResponse();
@@ -2223,6 +2316,8 @@ void MainFrame::OnFrmStart(wxCommandEvent& WXUNUSED(event)) {
 
     frm_plan = plan;
     frm_input_gain = pow(10.0, levelDbfs / 20.0);
+    m_sweepLeftPeak = 0.0;
+    m_sweepRightPeak = 0.0;
     frm_output_channel = choice_frm_output->GetSelection();
     m_sweepLevelDbfs = levelDbfs;
     m_sweepRate = m_SamplingFreq;
@@ -2263,6 +2358,7 @@ void MainFrame::OnFrmStart(wxCommandEvent& WXUNUSED(event)) {
     m_autoLoopback = false;
     m_autoLoopbackPhase = 0;
     button_frm_auto_reference->Enable(true);
+    button_frm_diff_reference->Enable(true);
     frm_running = false;
     button_frm_start->SetValue(false);
     button_frm_start->SetLabel(wxT("开始扫频"));
