@@ -18,6 +18,8 @@ set(CPP_SOURCES
 	sma_2d.h
 	spectrum_metrics.cpp
 	spectrum_metrics.h
+	sweep_plan.cpp
+	sweep_plan.h
 	event_ids.h
 	)
 

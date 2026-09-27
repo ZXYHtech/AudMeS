@@ -21,6 +21,7 @@
 #include "AudMeS.h"
 
 #include <math.h>
+#include <cmath>
 #include <wx/dcmemory.h>
 #include <wx/filename.h>
 #include <wx/stdpaths.h>
@@ -38,6 +39,7 @@
 #include "event_ids.h"
 #include "fourier.h"
 #include "spectrum_metrics.h"
+#include "sweep_plan.h"
 
 wxIMPLEMENT_CLASS(MainFrame, wxFrame);
 
@@ -78,6 +80,9 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
   EVT_CHOICE(ID_FFTAVG, MainFrame::OnFFTAvgChanged)
   EVT_CHOICE(ID_FFTREF, MainFrame::OnFFTScaleChanged)
   EVT_CHOICE(ID_FFTDBDIV, MainFrame::OnFFTScaleChanged)
+  EVT_CHOICE(ID_FFTWINDOW, MainFrame::OnFFTWindowChanged)
+  EVT_CHECKBOX(ID_FFT_PEAK_HOLD, MainFrame::OnPeakHoldToggle)
+  EVT_BUTTON(ID_FFT_PEAK_RESET, MainFrame::OnPeakHoldReset)
   EVT_BUTTON(ID_SA_START, MainFrame::OnSAStart)
   EVT_BUTTON(ID_SA_PREV, MainFrame::OnSAPrev)
   EVT_BUTTON(ID_SA_NEXT, MainFrame::OnSANext)
@@ -271,6 +276,10 @@ MainFrame::MainFrame(wxWindow* parent, int id, const wxString& title, const wxPo
 
   window_1_spe = new CtrlOScope(notebook_1_spe, _T("Hz"), _T("dB"));
   button_spe_start = new wxToggleButton(notebook_1_spe, ID_SPESTART, wxT("开始 FFT"));
+  checkbox_spe_peak_hold =
+      new wxCheckBox(notebook_1_spe, ID_FFT_PEAK_HOLD, wxT("Peak Hold（保留左右声道峰值）"));
+  button_spe_peak_reset =
+      new wxButton(notebook_1_spe, ID_FFT_PEAK_RESET, wxT("清除峰值"));
   label_fft_freq_value = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("基波  -- Hz"));
   label_fft_mag_value = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("幅度  -- dBFS"));
   label_thd_value = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("THD  -- %"));
@@ -283,8 +292,14 @@ MainFrame::MainFrame(wxWindow* parent, int id, const wxString& title, const wxPo
 
 
   /* Frequency response */
-  label_1_frm = new wxStaticText(notebook_1_frm, wxID_ANY, wxT("扫频点数（最大 120）"));
-  text_ctrl1_frm = new wxTextCtrl(notebook_1_frm, wxID_ANY, wxT(" 24"));
+  label_1_frm = new wxStaticText(notebook_1_frm, wxID_ANY, wxT("扫频点数（2–120）"));
+  text_ctrl1_frm = new wxTextCtrl(notebook_1_frm, wxID_ANY, wxT("24"));
+  text_ctrl_frm_start = new wxTextCtrl(notebook_1_frm, wxID_ANY, wxT("20"));
+  text_ctrl_frm_end = new wxTextCtrl(notebook_1_frm, wxID_ANY, wxT("20000"));
+  text_ctrl_frm_level = new wxTextCtrl(notebook_1_frm, wxID_ANY, wxT("-60"));
+  const wxString sweepSpacingChoices[] = {wxT("对数"), wxT("线性")};
+  choice_frm_spacing = new wxChoice(notebook_1_frm, wxID_ANY, wxDefaultPosition,
+                                     wxDefaultSize, 2, sweepSpacingChoices);
   button_frm_start = new wxToggleButton(notebook_1_frm, ID_FRMSTART, wxT("开始扫频"));
   window_1_frm = new CtrlOScope(notebook_1_frm, _T("Hz"), _T("dB"));
 
@@ -317,6 +332,7 @@ void MainFrame::set_properties() {
   choice_fftavg->SetSelection(0);
   choice_spe_ref->SetSelection(0);
   choice_spe_dbdiv->SetSelection(2);
+  choice_frm_spacing->SetSelection(0);
   // end wxGlade
 }
 
@@ -666,6 +682,12 @@ void MainFrame::AutoDetectE4x4(bool showMessage) {
 }
 
 void MainFrame::OnSAStart(wxCommandEvent& WXUNUSED(event)) {
+  if (frm_running || button_spe_start->GetValue() || button_gen_start->GetValue() ||
+      button_osc_start->GetValue()) {
+    wxMessageBox(wxT("请先停止正在使用音频接口的测量，再启动一键测试向导。"),
+                 wxT("音频接口正在使用"), wxOK | wxICON_WARNING, this);
+    return;
+  }
   choice_fft->SetSelection(3);
   choice_fftlength->SetSelection(9);
   choice_fftavg->SetSelection(3);
@@ -684,6 +706,7 @@ void MainFrame::OnSAStart(wxCommandEvent& WXUNUSED(event)) {
   m_saStep = 0;
   m_saStarted = true;
   AutoDetectE4x4(false);
+  text_ctrl_frm_end->SetValue(m_SamplingFreq >= 83334 ? wxT("40000") : wxT("20000"));
   UpdateSA440F5Step();
 }
 
@@ -748,7 +771,8 @@ void MainFrame::do_layout() {
 
   wxBoxSizer* sizer_9_frm = new wxBoxSizer(wxVERTICAL);
   wxBoxSizer* sizer_10_frm = new wxBoxSizer(wxHORIZONTAL);
-  wxBoxSizer* sizer_17_frm = new wxBoxSizer(wxVERTICAL);
+  wxFlexGridSizer* sizer_17_frm = new wxFlexGridSizer(2, 5, 8);
+  sizer_17_frm->AddGrowableCol(1, 1);
 
   wxBoxSizer* sizer_txtfreql = new wxBoxSizer(wxVERTICAL);
   wxBoxSizer* sizer_txtfreqr = new wxBoxSizer(wxVERTICAL);
@@ -937,18 +961,35 @@ void MainFrame::do_layout() {
   sizer_spe_9->Add(label_harmonics_value, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 16);
   sizer_spe_9->Add(label_thdn_sinad_value, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 16);
   sizer_spe_9->Add(label_snr_noise_value, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 16);
-  sizer_spe_9->Add(button_spe_start, 0, wxALL | wxALIGN_CENTER_HORIZONTAL | wxALIGN_CENTER_VERTICAL,
-                   8);
+  wxBoxSizer* spectrumActions = new wxBoxSizer(wxHORIZONTAL);
+  spectrumActions->Add(checkbox_spe_peak_hold, 0, wxRIGHT | wxALIGN_CENTER_VERTICAL, 12);
+  spectrumActions->Add(button_spe_peak_reset, 0, wxRIGHT | wxALIGN_CENTER_VERTICAL, 12);
+  spectrumActions->Add(button_spe_start, 0, wxALIGN_CENTER_VERTICAL);
+  sizer_spe_9->Add(spectrumActions, 0, wxALL | wxALIGN_CENTER_HORIZONTAL, 8);
   notebook_1_spe->SetAutoLayout(true);
   notebook_1_spe->SetSizer(sizer_spe_9);
   sizer_spe_9->Fit(notebook_1_spe);
   sizer_spe_9->SetSizeHints(notebook_1_spe);
 
   // frequency response
-  sizer_17_frm->Add(label_1_frm, 0, wxALL | wxALIGN_CENTER_HORIZONTAL | wxALIGN_CENTER_VERTICAL, 5);
-  sizer_17_frm->Add(text_ctrl1_frm, 0, wxALL | wxALIGN_CENTER_HORIZONTAL | wxALIGN_CENTER_VERTICAL,
-                    5);
+  sizer_17_frm->Add(new wxStaticText(notebook_1_frm, wxID_ANY, wxT("起始频率 [Hz]")),
+                    0, wxALIGN_CENTER_VERTICAL);
+  sizer_17_frm->Add(text_ctrl_frm_start, 0, wxEXPAND);
+  sizer_17_frm->Add(new wxStaticText(notebook_1_frm, wxID_ANY, wxT("截止频率 [Hz]")),
+                    0, wxALIGN_CENTER_VERTICAL);
+  sizer_17_frm->Add(text_ctrl_frm_end, 0, wxEXPAND);
+  sizer_17_frm->Add(label_1_frm, 0, wxALIGN_CENTER_VERTICAL);
+  sizer_17_frm->Add(text_ctrl1_frm, 0, wxEXPAND);
+  sizer_17_frm->Add(new wxStaticText(notebook_1_frm, wxID_ANY, wxT("扫频方式")),
+                    0, wxALIGN_CENTER_VERTICAL);
+  sizer_17_frm->Add(choice_frm_spacing, 0, wxEXPAND);
+  sizer_17_frm->Add(new wxStaticText(notebook_1_frm, wxID_ANY, wxT("数字激励 [dBFS]")),
+                    0, wxALIGN_CENTER_VERTICAL);
+  sizer_17_frm->Add(text_ctrl_frm_level, 0, wxEXPAND);
   sizer_frm_prop->Add(sizer_17_frm, 0, wxALL | wxEXPAND, 5);
+  sizer_frm_prop->Add(new wxStaticText(
+      notebook_1_frm, wxID_ANY, wxT("实际 DUT 输入电压需经 Loopback 校准")),
+      0, wxALL, 5);
   sizer_10_frm->Add(window_1_frm, 1, wxEXPAND, 0);
   sizer_10_frm->Add(sizer_frm_prop, 0, wxALL | wxEXPAND, 5);
   sizer_9_frm->Add(sizer_10_frm, 1, wxEXPAND, 0);
@@ -1019,10 +1060,12 @@ void MainFrame::set_custom_props() {
   /* freq response */
   window_1_frm->SetXRange(20, 20000, 1);
   window_1_frm->SetYRange(-80, 0, 0);
+  window_1_frm->SetNumOfVerticals(10);
 
   frm_running = 0;
   frm_measure = 0;
   frm_istep = 0;
+  frm_input_gain = 0.0;
 
   m_configfilename = wxT("");
 
@@ -1214,20 +1257,17 @@ void MainFrame::OnSincClick(wxCommandEvent& WXUNUSED(event)) {
   Refresh();
 }
 
-static const int frm_low = 20;
-
 void MainFrame::CalcFreqResponse() {
   /* periodically called by OnTimer
    * delays for measuring work by waiting for the next call
    */
-  if (frm_istep <= (int)frm_ipoints) {
-    float freq = frm_low * pow(10.0, 3.0 * frm_istep / frm_ipoints);
+  if (frm_istep < frm_ipoints) {
+    const double freq = frm_plan[frm_istep];
 
     if (0 == frm_measure) {
       // play new frequency e.g. from 20Hz to 20kHz
       m_RWAudio->PlaySetGenerator(freq, freq, RWAudio::SINE, RWAudio::SINE,
-                                  pow(10, slide_l_am->GetValue() / 20.0),
-                                  pow(10, slide_r_am->GetValue() / 20.0));
+                                  frm_input_gain, frm_input_gain);
       wxString bla;
       bla.Printf(wxT("Frequency : %.1f "), freq);
       window_1_frm->ShowUserText(bla, 100, 20);
@@ -1257,6 +1297,8 @@ void MainFrame::CalcFreqResponse() {
     button_frm_start->SetLabel(_T("开始扫频"));
     m_RWAudio->StopSnd();
     SendGenSettings();  // stop generator
+    frame_1_statusbar->SetStatusText(
+        wxString::Format(wxT("扫频完成 · 共 %d 个测量点"), frm_ipoints));
   }
 }
 
@@ -1267,9 +1309,9 @@ void MainFrame::DrawFreqResponse(void) {
   right.Clear();
   for (unsigned int i = 0; i < frm_freqs.size(); i++) {
     tmpval = frm_lgains[i];
-    left.Add(20.0 * log10(tmpval));
+    left.Add(tmpval > 0.0 ? 20.0 * log10(tmpval) : -150.0);
     tmpval = frm_rgains[i];
-    right.Add(20.0 * log10(tmpval));
+    right.Add(tmpval > 0.0 ? 20.0 * log10(tmpval) : -150.0);
   }
   window_1_frm->SetTrack1(left);
   window_1_frm->SetTrack2(right);
@@ -1367,7 +1409,7 @@ void MainFrame::DrawSpectrum(void) {
     }
   } else {
     /* wrong computation */
-    for (int i = 0; i < nsampl / 2; i++) {
+    for (int i = 1; i < nsampl / 2; i++) {
       spe_lmagns.Add(-150);
     }
   }
@@ -1437,7 +1479,7 @@ void MainFrame::DrawSpectrum(void) {
     }
   } else {
     /* wrong computation */
-    for (int i = 0; i < nsampl / 2; i++) {
+    for (int i = 1; i < nsampl / 2; i++) {
       spe_rmagns.Add(-150);
     }
   }
@@ -1446,6 +1488,20 @@ void MainFrame::DrawSpectrum(void) {
   // frequencies without DC
   for (int i = 1; i < nsampl / 2; i++) {
     spe_freqs.Add(fbase * i);
+  }
+  if (checkbox_spe_peak_hold->GetValue()) {
+    if (spe_peak_lmagns.GetCount() != spe_lmagns.GetCount() ||
+        spe_peak_rmagns.GetCount() != spe_rmagns.GetCount()) {
+      spe_peak_lmagns = spe_lmagns;
+      spe_peak_rmagns = spe_rmagns;
+    } else {
+      for (size_t i = 0; i < spe_lmagns.GetCount(); ++i) {
+        if (spe_lmagns[i] > spe_peak_lmagns[i]) spe_peak_lmagns[i] = spe_lmagns[i];
+        if (spe_rmagns[i] > spe_peak_rmagns[i]) spe_peak_rmagns[i] = spe_rmagns[i];
+      }
+    }
+    spe_lmagns = spe_peak_lmagns;
+    spe_rmagns = spe_peak_rmagns;
   }
   window_1_spe->SetTrack1(spe_lmagns);
   window_1_spe->SetTrack2(spe_rmagns);
@@ -1491,6 +1547,14 @@ void MainFrame::OnTimer(wxTimerEvent& WXUNUSED(event)) {
 }
 
 void MainFrame::OnXScaleChanged(wxCommandEvent& WXUNUSED(event)) {
+  if (frm_running || button_spe_start->GetValue() || button_gen_start->GetValue() ||
+      button_osc_start->GetValue()) {
+    choice_fftlength->SetStringSelection(
+        wxString::Format(wxT("%lu"), m_SpeBufferLength));
+    wxMessageBox(wxT("请先停止正在使用音频接口的测量，再更改 FFT 点数。"),
+                 wxT("采集窗口正在使用"), wxOK | wxICON_WARNING, this);
+    return;
+  }
   sweep_div = wxAtoi(choice_osc_swp->GetString(choice_osc_swp->GetSelection()));
   setoscbuf();
   window_osc->SetXRange(0, sweep_div * 10E-6, 0);
@@ -1500,6 +1564,8 @@ void MainFrame::OnXScaleChanged(wxCommandEvent& WXUNUSED(event)) {
   m_RWAudio->ChangeBufLen((unsigned long)(m_OscBufferLength), m_SpeBufferLength);
   m_SMASpeLeft->SetNumRecords(m_SpeBufferLength >> 1);
   m_SMASpeRight->SetNumRecords(m_SpeBufferLength >> 1);
+  spe_peak_lmagns.Clear();
+  spe_peak_rmagns.Clear();
 
   const double range[] = {1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000};
   range_div = 1 / range[choice_osc_l_res->GetSelection()];
@@ -1516,6 +1582,39 @@ void MainFrame::OnFFTAvgChanged(wxCommandEvent& WXUNUSED(event)) {
   int numAverage = wxAtoi(choice_fftavg->GetString(choice_fftavg->GetSelection()));
   m_SMASpeLeft->SetNumAverage(numAverage);
   m_SMASpeRight->SetNumAverage(numAverage);
+  spe_peak_lmagns.Clear();
+  spe_peak_rmagns.Clear();
+}
+
+void MainFrame::OnFFTWindowChanged(wxCommandEvent& WXUNUSED(event)) {
+  spe_peak_lmagns.Clear();
+  spe_peak_rmagns.Clear();
+}
+
+void MainFrame::OnPeakHoldToggle(wxCommandEvent& WXUNUSED(event)) {
+  spe_peak_lmagns.Clear();
+  spe_peak_rmagns.Clear();
+  spe_freqs.Clear();
+  spe_lmagns.Clear();
+  spe_rmagns.Clear();
+  window_1_spe->SetTrack1(wxArrayDouble());
+  window_1_spe->SetTrack2(wxArrayDouble());
+  window_1_spe->SetTrackX(wxArrayDouble());
+  window_1_spe->Refresh();
+}
+
+void MainFrame::OnPeakHoldReset(wxCommandEvent& WXUNUSED(event)) {
+  spe_peak_lmagns.Clear();
+  spe_peak_rmagns.Clear();
+  if (checkbox_spe_peak_hold->GetValue()) {
+    spe_freqs.Clear();
+    spe_lmagns.Clear();
+    spe_rmagns.Clear();
+    window_1_spe->SetTrack1(wxArrayDouble());
+    window_1_spe->SetTrack2(wxArrayDouble());
+    window_1_spe->SetTrackX(wxArrayDouble());
+    window_1_spe->Refresh();
+  }
 }
 
 void MainFrame::OnFFTScaleChanged(wxCommandEvent& WXUNUSED(event)) {
@@ -1531,6 +1630,8 @@ void MainFrame::OnSpanStart(wxCommandEvent& WXUNUSED(event)) {
   if (button_spe_start->GetValue()) {
     m_SMASpeLeft->SetNumRecords(m_SpeBufferLength >> 1);
     m_SMASpeRight->SetNumRecords(m_SpeBufferLength >> 1);
+    spe_peak_lmagns.Clear();
+    spe_peak_rmagns.Clear();
     button_spe_start->SetLabel(_T("停止 FFT"));
     m_RWAudio->StartSnd();
   } else {
@@ -1562,26 +1663,89 @@ void MainFrame::OnOscStart(wxCommandEvent& WXUNUSED(event)) {
 
 void MainFrame::OnFrmStart(wxCommandEvent& WXUNUSED(event)) {
   if (button_frm_start->GetValue()) {
-    long ip;
-    button_frm_start->SetLabel(_T("停止扫频"));
-    wxString tpoints = text_ctrl1_frm->GetValue();
-    tpoints.ToLong(&ip, 10);
-    if (ip > 120) ip = 120;
-    if (ip < 1) ip = 1;
-    frm_ipoints = (int)ip;
+    double startHz = 0.0;
+    double endHz = 0.0;
+    double levelDbfs = 0.0;
+    long points = 0;
+    const bool validFields = text_ctrl_frm_start->GetValue().ToDouble(&startHz) &&
+                             text_ctrl_frm_end->GetValue().ToDouble(&endHz) &&
+                             text_ctrl_frm_level->GetValue().ToDouble(&levelDbfs) &&
+                             text_ctrl1_frm->GetValue().ToLong(&points);
+    const std::vector<double> plan = validFields && points >= 2 && points <= 120
+        ? BuildSweepFrequencies(startHz, endHz, static_cast<int>(points),
+                                choice_frm_spacing->GetSelection() == 0, m_SamplingFreq)
+        : std::vector<double>();
+    if (plan.empty() || !std::isfinite(levelDbfs) || levelDbfs < -80.0 ||
+        levelDbfs > -20.0) {
+      button_frm_start->SetValue(false);
+      wxMessageBox(wxT("请检查扫频设置：起点 ≥20 Hz、终点高于起点且 ≤40 kHz，"
+                       "终点须低于当前采样率的 48%；点数 2–120，数字激励 -80 至 -20 dBFS。"),
+                   wxT("扫频设置无效"), wxOK | wxICON_WARNING, this);
+      return;
+    }
+    if (button_spe_start->GetValue() || button_gen_start->GetValue() ||
+        button_osc_start->GetValue()) {
+      button_frm_start->SetValue(false);
+      wxMessageBox(wxT("请先停止 FFT、信号源或示波器，再开始扫频。"),
+                   wxT("音频接口正在使用"), wxOK | wxICON_WARNING, this);
+      return;
+    }
+
+    // Keep at least four periods of the lowest tone in each captured record.
+    const unsigned long minimumSamples =
+        static_cast<unsigned long>(std::ceil(4.0 * m_SamplingFreq / startHz));
+    unsigned long requiredSamples = m_SpeBufferLength;
+    if (requiredSamples < minimumSamples) requiredSamples = minimumSamples;
+    int fftSelection = 0;
+    while (fftSelection < static_cast<int>(choice_fftlength->GetCount()) &&
+           static_cast<unsigned long>(wxAtoi(choice_fftlength->GetString(fftSelection))) <
+               requiredSamples) ++fftSelection;
+    if (fftSelection == static_cast<int>(choice_fftlength->GetCount())) {
+      button_frm_start->SetValue(false);
+      wxMessageBox(wxT("当前采样率与起始频率需要更长的采集窗口。"),
+                   wxT("无法开始扫频"), wxOK | wxICON_WARNING, this);
+      return;
+    }
+    const unsigned long selectedSamples =
+        static_cast<unsigned long>(wxAtoi(choice_fftlength->GetString(fftSelection)));
+    if (selectedSamples != m_SpeBufferLength) {
+      choice_fftlength->SetSelection(fftSelection);
+      m_SpeBufferLength = selectedSamples;
+      m_RWAudio->ChangeBufLen(static_cast<long int>(m_OscBufferLength),
+                              static_cast<long int>(m_SpeBufferLength));
+      m_SMASpeLeft->SetNumRecords(m_SpeBufferLength >> 1);
+      m_SMASpeRight->SetNumRecords(m_SpeBufferLength >> 1);
+      spe_peak_lmagns.Clear();
+      spe_peak_rmagns.Clear();
+    }
+
+    frm_plan = plan;
+    frm_input_gain = pow(10.0, levelDbfs / 20.0);
+    frm_ipoints = static_cast<int>(frm_plan.size());
     frm_istep = 0;
 
     frm_freqs.Clear();
     frm_lgains.Clear();
     frm_rgains.Clear();
+    window_1_frm->SetTrack1(wxArrayDouble());
+    window_1_frm->SetTrack2(wxArrayDouble());
+    window_1_frm->SetTrackX(wxArrayDouble());
 
     frm_measure = 0;
     frm_running = true;
-    m_RWAudio->StartSnd();
+    window_1_frm->SetXRange(startHz, endHz, choice_frm_spacing->GetSelection() == 0 ? 1 : 0);
+    button_frm_start->SetLabel(wxT("停止扫频"));
+    if (m_RWAudio->StartSnd() != 0) {
+      frm_running = false;
+      button_frm_start->SetValue(false);
+      button_frm_start->SetLabel(wxT("开始扫频"));
+      wxMessageBox(wxT("无法启动音频接口，请检查设备连接与采样率。"),
+                   wxT("扫频启动失败"), wxOK | wxICON_ERROR, this);
+    }
   } else {
     frm_running = false;
     button_frm_start->SetValue(false);
-    button_frm_start->SetLabel(_T("Start"));
+    button_frm_start->SetLabel(wxT("开始扫频"));
     m_RWAudio->StopSnd();
     SendGenSettings();  // stop generator
   }

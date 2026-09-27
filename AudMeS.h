@@ -24,6 +24,7 @@
 #include <wx/notebook.h>
 // end wxGlade
 #include <wx/tglbtn.h>
+#include <vector>
 
 #include "CtrlOScope.h"
 #include "RWAudio_IO.h"
@@ -90,6 +91,9 @@ class MainFrame : public wxFrame {
   void OnXScaleChanged(wxCommandEvent& event);
   void OnFFTAvgChanged(wxCommandEvent& event);
   void OnFFTScaleChanged(wxCommandEvent& event);
+  void OnFFTWindowChanged(wxCommandEvent& event);
+  void OnPeakHoldToggle(wxCommandEvent& event);
+  void OnPeakHoldReset(wxCommandEvent& event);
   void OnSAStart(wxCommandEvent& event);
   void OnSAPrev(wxCommandEvent& event);
   void OnSANext(wxCommandEvent& event);
@@ -178,6 +182,8 @@ class MainFrame : public wxFrame {
   wxChoice* choice_spe_dbdiv;
   CtrlOScope* window_1_spe;
   wxToggleButton* button_spe_start;
+  wxCheckBox* checkbox_spe_peak_hold;
+  wxButton* button_spe_peak_reset;
   wxPanel* notebook_1_spe;
   wxPanel* notebook_1_home;
   wxPanel* notebook_1_sa;
@@ -193,6 +199,10 @@ class MainFrame : public wxFrame {
   wxStaticText* label_1_frm;
   wxStaticText* label_2_frm;
   wxTextCtrl* text_ctrl1_frm;
+  wxTextCtrl* text_ctrl_frm_start;
+  wxTextCtrl* text_ctrl_frm_end;
+  wxTextCtrl* text_ctrl_frm_level;
+  wxChoice* choice_frm_spacing;
   wxTextCtrl* text_ctrl2_frm;
   wxToggleButton* button_frm_start;
   CtrlOScope* window_1_frm;
@@ -206,6 +216,8 @@ class MainFrame : public wxFrame {
   int frm_ipoints;
   int frm_istep;
   int frm_measure;
+  double frm_input_gain;
+  std::vector<double> frm_plan;
   double sweep_div;
 
   int trigger_channel;
@@ -219,6 +231,8 @@ class MainFrame : public wxFrame {
   wxArrayDouble spe_freqs;
   wxArrayDouble spe_lmagns;
   wxArrayDouble spe_rmagns;
+  wxArrayDouble spe_peak_lmagns;
+  wxArrayDouble spe_peak_rmagns;
   wxArrayDouble frm_freqs;
   wxArrayDouble frm_lgains;
   wxArrayDouble frm_rgains;
