@@ -27,6 +27,7 @@
 #include <wx/file.h>
 #include <wx/filename.h>
 #include <wx/stdpaths.h>
+#include <wx/textdlg.h>
 
 #ifdef __WXMSW__
 #include <windows.h>
@@ -58,6 +59,7 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
   EVT_BUTTON(ID_SWEEP_DIFF_REFERENCE, MainFrame::OnAutoDifferentialLoopback)
   EVT_BUTTON(ID_SWEEP_SAVE_REFERENCE, MainFrame::OnSaveLoopback)
   EVT_BUTTON(ID_SWEEP_LOAD_REFERENCE, MainFrame::OnLoadLoopback)
+  EVT_BUTTON(ID_SWEEP_VOLTAGE_REFERENCE, MainFrame::OnVoltageReference)
   EVT_MENU(wxID_ABOUT, MainFrame::OnAboutClick)
   EVT_MENU(wxID_EXIT, MainFrame::OnExitClick)
   EVT_CLOSE(MainFrame::OnClose)
@@ -333,6 +335,8 @@ MainFrame::MainFrame(wxWindow* parent, int id, const wxString& title, const wxPo
                                           wxT("保存基准"));
   button_frm_load_reference = new wxButton(notebook_1_frm, ID_SWEEP_LOAD_REFERENCE,
                                           wxT("载入基准"));
+  button_frm_voltage_reference = new wxButton(notebook_1_frm, ID_SWEEP_VOLTAGE_REFERENCE,
+                                              wxT("录入 1 kHz 实测电压"));
   label_frm_calibration = new wxStaticText(notebook_1_frm, wxID_ANY,
       wxT("Loopback：尚无基准；需先完成直接回环扫频"));
   label_frm_summary = new wxStaticText(notebook_1_frm, wxID_ANY,
@@ -1115,6 +1119,7 @@ void MainFrame::do_layout() {
   referenceFiles->Add(button_frm_save_reference, 1, wxRIGHT | wxEXPAND, 4);
   referenceFiles->Add(button_frm_load_reference, 1, wxEXPAND, 0);
   sizer_frm_prop->Add(referenceFiles, 0, wxALL | wxEXPAND, 5);
+  sizer_frm_prop->Add(button_frm_voltage_reference, 0, wxALL | wxEXPAND, 5);
   sizer_frm_prop->Add(checkbox_frm_correct, 0, wxALL, 5);
   sizer_10_frm->Add(window_1_frm, 1, wxEXPAND, 0);
   sizer_10_frm->Add(sizer_frm_prop, 0, wxALL | wxEXPAND, 5);
@@ -1627,6 +1632,13 @@ void MainFrame::DrawFreqResponse(void) {
       calibrationStatus += wxT(" · 测量条件不符，显示原始曲线");
     }
   }
+  const int voltageOutput = choice_frm_output->GetSelection();
+  const LoopbackReference voltageReference = m_dualOutputValid && voltageOutput >= 0 &&
+      voltageOutput < 2 ? m_dualOutput[voltageOutput] : CurrentLoopbackReference();
+  calibrationStatus += voltageReference.measuredVrmsAt1k > 0.0 ? wxString::Format(
+      wxT("\n1 kHz 外部电压基准：%.6f Vrms · 仅原接线/增益/音量有效；需人工复核"),
+      voltageReference.measuredVrmsAt1k) :
+      wxT("\n1 kHz 真实电压：未校准（需要外部仪表测量）");
   if (label_frm_calibration->GetLabel() != calibrationStatus)
     label_frm_calibration->SetLabel(calibrationStatus);
   window_1_frm->Refresh();
@@ -1668,6 +1680,7 @@ LoopbackReference MainFrame::CurrentLoopbackReference() const {
   reference.outputChannel = m_loopbackOutputChannel;
   reference.captureChannel = m_loopbackCaptureChannel;
   reference.levelDbfs = m_loopbackLevelDbfs;
+  reference.measuredVrmsAt1k = m_loopbackMeasuredVrms;
   reference.frequencies = m_loopbackFrequencies;
   reference.rms = m_loopbackRms;
   return reference;
@@ -1737,6 +1750,7 @@ bool MainFrame::CaptureLoopback(bool confirmWiring) {
   m_loopbackRecordDev = m_sweepRecordDev;
   m_loopbackPlayDev = m_sweepPlayDev;
   m_loopbackLevelDbfs = m_sweepLevelDbfs;
+  m_loopbackMeasuredVrms = 0.0;
   m_loopbackAt = wxString::FromUTF8(reference.capturedAt.c_str());
   m_loopbackApiName = reference.api;
   m_loopbackRecordName = reference.recordDevice;
@@ -1890,6 +1904,50 @@ void MainFrame::OnSaveLoopback(wxCommandEvent& WXUNUSED(event)) {
   frame_1_statusbar->SetStatusText(wxT("Loopback 基准已保存：") + dialog.GetPath());
 }
 
+void MainFrame::OnVoltageReference(wxCommandEvent& WXUNUSED(event)) {
+  if (frm_running || button_spe_start->GetValue() || button_gen_start->GetValue() ||
+      button_osc_start->GetValue()) {
+    wxMessageBox(wxT("请先停止所有采集与输出。"), wxT("电压基准"), wxOK, this);
+    return;
+  }
+  const int output = choice_frm_output->GetSelection();
+  const bool dual = m_dualOutputValid && output >= 0 && output < 2;
+  LoopbackReference reference = dual ? m_dualOutput[output] : CurrentLoopbackReference();
+  std::string error;
+  if ((!dual && (!m_loopbackValid || m_dualOutputValid)) ||
+      reference.outputChannel != output || !ValidateLoopbackReference(reference, &error)) {
+    wxMessageBox(wxT("请先测量或载入与当前激励声道对应的回环基准。"),
+                 wxT("电压基准"), wxOK | wxICON_WARNING, this);
+    return;
+  }
+  wxTextEntryDialog dialog(this, wxString::Format(
+      wxT("录入已由示波器/真有效值仪表测得的 1 kHz 电压。\n"
+          "须使用本基准的同一接线、输入增益、输出音量、%.0f dBFS 激励。\n"
+          "测量跨 IN3 的信号两端；不可把示波器地夹接到耳机输出一路。\n"
+          "输入例如 0.010 Vrms 或 0.028284 Vpp。Vpp 换算仅适用于无削顶正弦。\n"
+          "本操作不播放信号、不自动验证示波器读数。输入 0 可清除电压基准。"),
+      reference.levelDbfs), wxT("录入外部 1 kHz 电压"));
+  if (dialog.ShowModal() != wxID_OK) return;
+  wxString input = dialog.GetValue().Trim().Trim(false);
+  const bool peakToPeak = input.EndsWith(wxT("Vpp"));
+  if (peakToPeak) input.RemoveLast(3);
+  else if (input.EndsWith(wxT("Vrms"))) input.RemoveLast(4);
+  double voltage = 0.0;
+  if (!input.Trim().ToDouble(&voltage) || !std::isfinite(voltage) || voltage < 0.0 ||
+      voltage > 20.0) {
+    wxMessageBox(wxT("请输入 0–20 之间的有限电压，单位为 Vrms 或 Vpp。"),
+                 wxT("无效电压"), wxOK | wxICON_WARNING, this);
+    return;
+  }
+  if (peakToPeak) voltage /= 2.0 * std::sqrt(2.0);
+  reference.measuredVrmsAt1k = voltage;
+  if (dual) m_dualOutput[output] = reference;
+  else m_loopbackMeasuredVrms = voltage;
+  DrawFreqResponse();
+  notebook_1_frm->Layout();
+  frame_1_statusbar->SetStatusText(wxT("电压基准已更新；点击保存基准留存。旋钮或接线改变后须重新校准。"));
+}
+
 void MainFrame::OnLoadLoopback(wxCommandEvent& WXUNUSED(event)) {
   if (frm_running || button_spe_start->GetValue() || button_gen_start->GetValue() ||
       button_osc_start->GetValue()) {
@@ -1944,6 +2002,7 @@ void MainFrame::OnLoadLoopback(wxCommandEvent& WXUNUSED(event)) {
   m_loopbackOutputChannel = reference.outputChannel;
   m_loopbackCaptureChannel = reference.captureChannel;
   m_loopbackLevelDbfs = reference.levelDbfs;
+  m_loopbackMeasuredVrms = reference.measuredVrmsAt1k;
   m_loopbackFrequencies = reference.frequencies;
   m_loopbackRms = reference.rms;
   m_loopbackValid = true;

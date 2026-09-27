@@ -74,6 +74,7 @@ class MainFrame : public wxFrame {
   bool CaptureLoopback(bool confirmWiring);
   void OnSaveLoopback(wxCommandEvent& event);
   void OnLoadLoopback(wxCommandEvent& event);
+  void OnVoltageReference(wxCommandEvent& event);
   bool GetSelectedDeviceNames(unsigned int recordId, unsigned int playId,
                               std::string* recordName, std::string* playName);
   LoopbackReference CurrentLoopbackReference() const;
@@ -226,6 +227,7 @@ class MainFrame : public wxFrame {
   wxButton* button_frm_diff_reference;
   wxButton* button_frm_save_reference;
   wxButton* button_frm_load_reference;
+  wxButton* button_frm_voltage_reference;
   wxStaticText* label_frm_calibration;
   wxStaticText* label_frm_summary;
   wxTextCtrl* text_ctrl2_frm;
@@ -261,6 +263,7 @@ class MainFrame : public wxFrame {
   int m_loopbackOutputChannel;
   int m_loopbackCaptureChannel;
   double m_loopbackLevelDbfs;
+  double m_loopbackMeasuredVrms = 0.0;
   wxString m_loopbackAt;
   std::string m_loopbackApiName;
   std::string m_loopbackRecordName;

@@ -13,6 +13,8 @@ struct LoopbackReference {
   int outputChannel = -1;
   int captureChannel = -1;
   double levelDbfs = 0.0;
+  // Externally measured 1 kHz voltage across the calibrated input; zero means unknown.
+  double measuredVrmsAt1k = 0.0;
   std::vector<double> frequencies;
   std::vector<double> rms;
 };
@@ -24,6 +26,8 @@ struct DualOutputBalance {
 };
 
 bool ValidateLoopbackReference(const LoopbackReference& reference, std::string* error);
+bool LoopbackRmsToVrmsAt1k(const LoopbackReference& reference, double digitalRms,
+                          double* volts);
 bool LoopbackMatchesRoute(const LoopbackReference& reference, const std::string& api,
                           const std::string& recordDevice, const std::string& playDevice,
                           unsigned int sampleRate, int outputChannel, double levelDbfs);

@@ -45,6 +45,26 @@ int main() {
     return 1;
   }
   LoopbackReference right = original;
+  LoopbackReference voltageReference = original;
+  voltageReference.measuredVrmsAt1k = 0.01;
+  double volts = -1.0;
+  if (!SerializeLoopbackReference(voltageReference, &serialized, &error) ||
+      !ParseLoopbackReference(serialized, &restored, &error) ||
+      restored.measuredVrmsAt1k != 0.01 ||
+      !LoopbackRmsToVrmsAt1k(restored, original.rms[1] * 2.0, &volts) ||
+      std::fabs(volts - 0.02) > 1e-12 ||
+      LoopbackRmsToVrmsAt1k(original, original.rms[1], &volts) ||
+      LoopbackRmsToVrmsAt1k(restored, -1.0, &volts) ||
+      LoopbackRmsToVrmsAt1k(restored, 1.0, nullptr)) {
+    std::cerr << "External voltage persistence or conversion failed\n";
+    return 1;
+  }
+  voltageReference.measuredVrmsAt1k = -1.0;
+  if (ValidateLoopbackReference(voltageReference, &error)) return 1;
+  voltageReference.measuredVrmsAt1k = NAN;
+  if (ValidateLoopbackReference(voltageReference, &error)) return 1;
+  // Restore V1 test input for the later malformed-file checks.
+  SerializeLoopbackReference(original, &serialized, &error);
   right.outputChannel = 1;
   right.rms = {0.00031, 0.00032, 0.00031};
   std::string dual;

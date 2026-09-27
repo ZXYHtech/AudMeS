@@ -47,6 +47,9 @@ bool ParseNumber(const std::string& value, Number* number) {
 }  // namespace
 
 bool ValidateLoopbackReference(const LoopbackReference& reference, std::string* error) {
+  if (!std::isfinite(reference.measuredVrmsAt1k) || reference.measuredVrmsAt1k < 0.0 ||
+      reference.measuredVrmsAt1k > 20.0)
+    return Fail(error, "Invalid externally measured 1 kHz voltage.");
   if (!SafeLine(reference.api) || !SafeLine(reference.recordDevice) ||
       !SafeLine(reference.playDevice) || !SafeLine(reference.capturedAt))
     return Fail(error, "Missing or invalid device/API/time metadata.");
@@ -69,6 +72,19 @@ bool ValidateLoopbackReference(const LoopbackReference& reference, std::string* 
   const SweepAnalysis analysis = AnalyzeSweepChannel(reference.frequencies, reference.rms);
   if (!analysis.hasReference || analysis.referenceDb < -100.0)
     return Fail(error, "No usable 1 kHz reference above the noise threshold.");
+  return true;
+}
+
+bool LoopbackRmsToVrmsAt1k(const LoopbackReference& reference, double digitalRms,
+                          double* volts) {
+  if (!volts || !std::isfinite(digitalRms) || digitalRms < 0.0 ||
+      reference.measuredVrmsAt1k <= 0.0 ||
+      !ValidateLoopbackReference(reference, nullptr)) return false;
+  const SweepAnalysis analysis = AnalyzeSweepChannel(reference.frequencies, reference.rms);
+  const double result = digitalRms * reference.measuredVrmsAt1k /
+      std::pow(10.0, analysis.referenceDb / 20.0);
+  if (!std::isfinite(result)) return false;
+  *volts = result;
   return true;
 }
 
@@ -97,7 +113,7 @@ bool SerializeLoopbackReference(const LoopbackReference& reference, std::string*
   if (!contents || !ValidateLoopbackReference(reference, error)) return false;
   std::ostringstream output;
   output.imbue(std::locale::classic());
-  output << "AUDMES_LOOPBACK_V1\n"
+  output << (reference.measuredVrmsAt1k > 0.0 ? "AUDMES_LOOPBACK_V2\n" : "AUDMES_LOOPBACK_V1\n")
          << "api=" << reference.api << '\n'
          << "record_device=" << reference.recordDevice << '\n'
          << "play_device=" << reference.playDevice << '\n'
@@ -106,8 +122,10 @@ bool SerializeLoopbackReference(const LoopbackReference& reference, std::string*
          << "output_channel=" << reference.outputChannel << '\n'
          << "capture_channel=" << reference.captureChannel << '\n'
          << std::setprecision(17)
-         << "level_dbfs=" << reference.levelDbfs << '\n'
-         << "points=" << reference.frequencies.size() << '\n'
+         << "level_dbfs=" << reference.levelDbfs << '\n';
+  if (reference.measuredVrmsAt1k > 0.0)
+    output << "measured_vrms_1k=" << reference.measuredVrmsAt1k << '\n';
+  output << "points=" << reference.frequencies.size() << '\n'
          << "Hz,Rms\n";
   for (size_t i = 0; i < reference.frequencies.size(); ++i)
     output << reference.frequencies[i] << ',' << reference.rms[i] << '\n';
@@ -123,7 +141,9 @@ bool ParseLoopbackReference(const std::string& contents, LoopbackReference* refe
   input.imbue(std::locale::classic());
   std::string line, value;
   LoopbackReference loaded;
-  if (!ReadLine(input, &line) || line != "AUDMES_LOOPBACK_V1" ||
+  if (!ReadLine(input, &line)) return Fail(error, "Missing Loopback header.");
+  const bool version2 = line == "AUDMES_LOOPBACK_V2";
+  if ((!version2 && line != "AUDMES_LOOPBACK_V1") ||
       !ReadKey(input, "api", &loaded.api) ||
       !ReadKey(input, "record_device", &loaded.recordDevice) ||
       !ReadKey(input, "play_device", &loaded.playDevice) ||
@@ -137,8 +157,12 @@ bool ParseLoopbackReference(const std::string& contents, LoopbackReference* refe
   loaded.sampleRate = static_cast<unsigned int>(integer);
   if (!ReadKey(input, "output_channel", &value) || !ParseNumber(value, &loaded.outputChannel) ||
       !ReadKey(input, "capture_channel", &value) || !ParseNumber(value, &loaded.captureChannel) ||
-      !ReadKey(input, "level_dbfs", &value) || !ParseNumber(value, &loaded.levelDbfs) ||
-      !ReadKey(input, "points", &value) || !ParseNumber(value, &integer) ||
+      !ReadKey(input, "level_dbfs", &value) || !ParseNumber(value, &loaded.levelDbfs))
+    return Fail(error, "Invalid Loopback settings.");
+  if (version2 && (!ReadKey(input, "measured_vrms_1k", &value) ||
+      !ParseNumber(value, &loaded.measuredVrmsAt1k) || loaded.measuredVrmsAt1k <= 0.0))
+    return Fail(error, "Missing positive external voltage in V2 file.");
+  if (!ReadKey(input, "points", &value) || !ParseNumber(value, &integer) ||
       integer < 2 || integer > 120 || !ReadLine(input, &line) || line != "Hz,Rms")
     return Fail(error, "Invalid Loopback settings or CSV header.");
   for (int i = 0; i < integer; ++i) {
