@@ -54,6 +54,7 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
   EVT_CHOICE(ID_SWEEP_CHANNEL, MainFrame::OnSweepViewChanged)
   EVT_CHECKBOX(ID_SWEEP_CORRECT, MainFrame::OnSweepViewChanged)
   EVT_BUTTON(ID_SWEEP_REFERENCE, MainFrame::OnCaptureLoopback)
+  EVT_BUTTON(ID_SWEEP_AUTO_REFERENCE, MainFrame::OnAutoLoopback)
   EVT_BUTTON(ID_SWEEP_SAVE_REFERENCE, MainFrame::OnSaveLoopback)
   EVT_BUTTON(ID_SWEEP_LOAD_REFERENCE, MainFrame::OnLoadLoopback)
   EVT_MENU(wxID_ABOUT, MainFrame::OnAboutClick)
@@ -321,6 +322,8 @@ MainFrame::MainFrame(wxWindow* parent, int id, const wxString& title, const wxPo
                                         wxT("按 Loopback 基准补偿"));
   button_frm_reference = new wxButton(notebook_1_frm, ID_SWEEP_REFERENCE,
                                       wxT("将当前实测设为 Loopback 基准"));
+  button_frm_auto_reference = new wxButton(notebook_1_frm, ID_SWEEP_AUTO_REFERENCE,
+                                           wxT("一键测量 Loopback 基准"));
   button_frm_save_reference = new wxButton(notebook_1_frm, ID_SWEEP_SAVE_REFERENCE,
                                           wxT("保存基准"));
   button_frm_load_reference = new wxButton(notebook_1_frm, ID_SWEEP_LOAD_REFERENCE,
@@ -1042,6 +1045,7 @@ void MainFrame::do_layout() {
   sizer_frm_prop->Add(new wxStaticText(notebook_1_frm, wxID_ANY, wxT("激励声道")),
                        0, wxLEFT | wxRIGHT | wxTOP, 5);
   sizer_frm_prop->Add(choice_frm_output, 0, wxALL | wxEXPAND, 5);
+  sizer_frm_prop->Add(button_frm_auto_reference, 0, wxALL | wxEXPAND, 5);
   sizer_frm_prop->Add(button_frm_reference, 0, wxALL | wxEXPAND, 5);
   wxBoxSizer* referenceFiles = new wxBoxSizer(wxHORIZONTAL);
   referenceFiles->Add(button_frm_save_reference, 1, wxRIGHT | wxEXPAND, 4);
@@ -1127,6 +1131,7 @@ void MainFrame::set_custom_props() {
   frm_istep = 0;
   frm_input_gain = 0.0;
   m_sweepComplete = false;
+  m_autoLoopback = false;
   m_sweepLevelDbfs = 0.0;
   m_sweepRate = 0;
   m_sweepRecordDev = 0;
@@ -1369,8 +1374,14 @@ void MainFrame::CalcFreqResponse() {
       frm_rgains.Add(sqrt(r_rms / m_SpeBufferLength));
       frm_measure = 0;
       frm_istep++;
+      if (m_autoLoopback)
+        frame_1_statusbar->SetStatusText(wxString::Format(
+            wxT("Loopback 基准测量 %d/%d · %.0f Hz"), frm_istep, frm_ipoints, freq));
     }
   } else {
+    const bool autoLoopback = m_autoLoopback;
+    m_autoLoopback = false;
+    button_frm_auto_reference->Enable(true);
     frm_running = false;
     m_sweepComplete = true;
     button_frm_reference->Enable(true);
@@ -1381,6 +1392,12 @@ void MainFrame::CalcFreqResponse() {
     SendGenSettings();  // stop generator
     frame_1_statusbar->SetStatusText(
         wxString::Format(wxT("扫频完成 · 共 %d 个测量点"), frm_ipoints));
+    if (autoLoopback) {
+      if (CaptureLoopback(false))
+        frame_1_statusbar->SetStatusText(wxT("Loopback 基准已记录 · 点击“保存基准”可留存"));
+      else
+        frame_1_statusbar->SetStatusText(wxT("Loopback 基准无效 · 请检查回环接线和输入增益"));
+    }
   }
 }
 
@@ -1502,9 +1519,9 @@ LoopbackReference MainFrame::CurrentLoopbackReference() const {
   return reference;
 }
 
-void MainFrame::OnCaptureLoopback(wxCommandEvent& WXUNUSED(event)) {
+bool MainFrame::CaptureLoopback(bool confirmWiring) {
   if (frm_running || button_spe_start->GetValue() || button_gen_start->GetValue() ||
-      button_osc_start->GetValue() || !m_sweepComplete || frm_freqs.GetCount() < 2) return;
+      button_osc_start->GetValue() || !m_sweepComplete || frm_freqs.GetCount() < 2) return false;
   std::vector<double> frequencies, left, right;
   for (size_t i = 0; i < frm_freqs.GetCount(); ++i) {
     frequencies.push_back(frm_freqs[i]);
@@ -1525,13 +1542,13 @@ void MainFrame::OnCaptureLoopback(wxCommandEvent& WXUNUSED(event)) {
     wxMessageBox(wxT("无法确认有信号的回环输入。请选择“左声道”或“右声道”，"
                      "并确认 1 kHz 回传高于底噪后再保存基准。"),
                  wxT("Loopback 基准无效"), wxOK | wxICON_WARNING, this);
-    return;
+    return false;
   }
   std::string recordName, playName, error;
   if (!GetSelectedDeviceNames(m_sweepRecordDev, m_sweepPlayDev, &recordName, &playName)) {
     wxMessageBox(wxT("找不到本次扫频所用的音频接口，请重新检测设备并测量。"),
                  wxT("Loopback 基准无效"), wxOK | wxICON_WARNING, this);
-    return;
+    return false;
   }
   LoopbackReference reference;
   reference.api = m_RWAudio->GetCurrentApiName();
@@ -1547,11 +1564,11 @@ void MainFrame::OnCaptureLoopback(wxCommandEvent& WXUNUSED(event)) {
   if (!ValidateLoopbackReference(reference, &error)) {
     wxMessageBox(wxT("当前扫频数据不能作为基准：") + wxString::FromUTF8(error.c_str()),
                  wxT("Loopback 基准无效"), wxOK | wxICON_WARNING, this);
-    return;
+    return false;
   }
-  if (wxMessageBox(wxT("请确认当前是音频接口直接回环接线，未经过 SA-440F5。\n"
+  if (confirmWiring && wxMessageBox(wxT("请确认当前是音频接口直接回环接线，未经过 SA-440F5。\n"
                        "基准将记录当前输入、输出、采样率和数字激励电平，可随后保存到文件。"),
-                   wxT("记录 Loopback 基准"), wxYES_NO | wxICON_QUESTION, this) != wxYES) return;
+                   wxT("记录 Loopback 基准"), wxYES_NO | wxICON_QUESTION, this) != wxYES) return false;
 
   m_loopbackFrequencies = reference.frequencies;
   m_loopbackRms = reference.rms;
@@ -1573,6 +1590,52 @@ void MainFrame::OnCaptureLoopback(wxCommandEvent& WXUNUSED(event)) {
       channel == 0 ? wxT("左") : wxT("右"), m_loopbackRate, m_loopbackLevelDbfs));
   notebook_1_home->Layout();
   DrawFreqResponse();
+  return true;
+}
+
+void MainFrame::OnCaptureLoopback(wxCommandEvent& WXUNUSED(event)) {
+  CaptureLoopback(true);
+}
+
+void MainFrame::OnAutoLoopback(wxCommandEvent& WXUNUSED(event)) {
+  if (frm_running || button_spe_start->GetValue() || button_gen_start->GetValue() ||
+      button_osc_start->GetValue()) {
+    wxMessageBox(wxT("请先停止其他测量，再开始 Loopback 基准测量。"),
+                 wxT("音频接口正在使用"), wxOK | wxICON_WARNING, this);
+    return;
+  }
+  std::string recordName, playName;
+  if (!GetSelectedDeviceNames(m_RecordDev, m_PlayDev, &recordName, &playName) ||
+      m_RWAudio->GetCurrentApiName() != "wasapi" ||
+      recordName.find("E4x4") == std::string::npos ||
+      recordName.find("Analog 3/4") == std::string::npos ||
+      playName.find("E4x4") == std::string::npos ||
+      playName.find("Playback 1/2") == std::string::npos ||
+      m_SamplingFreq < 44100) {
+    wxMessageBox(wxT("一键基准只支持已验证的 E4x4 Pre 路由：WASAPI Playback 1/2 输出和 Analog 3/4 输入，采样率至少 44.1 kHz。请在“音频接口设置”中检查。"),
+                 wxT("音频接口不匹配"), wxOK | wxICON_WARNING, this);
+    return;
+  }
+  if (wxMessageBox(wxT("请确认 E4x4 Pre 前面板耳机输出 1 已直接连接模拟 IN 3，未经过被测设备；48 V 幻象电源已关闭，输出音量及输入增益已调至安全位置。\n\n将以左输出/左输入、20 Hz–20 kHz、24 点、−40 dBFS 测量。完成后自动记录基准；保存文件仍需手动点击。"),
+                   wxT("确认直接回环接线"), wxYES_NO | wxICON_QUESTION, this) != wxYES) return;
+  text_ctrl_frm_start->SetValue(wxT("20"));
+  text_ctrl_frm_end->SetValue(wxT("20000"));
+  text_ctrl1_frm->SetValue(wxT("24"));
+  text_ctrl_frm_level->SetValue(wxT("-40"));
+  choice_frm_spacing->SetSelection(0);
+  choice_frm_channel->SetSelection(1);
+  choice_frm_output->SetSelection(0);
+  checkbox_frm_correct->SetValue(false);
+  choice_frm_channel->Enable(true);
+  m_autoLoopback = true;
+  button_frm_auto_reference->Enable(false);
+  button_frm_start->SetValue(true);
+  wxCommandEvent startEvent(wxEVT_TOGGLEBUTTON, ID_FRMSTART);
+  OnFrmStart(startEvent);
+  if (!frm_running) {
+    m_autoLoopback = false;
+    button_frm_auto_reference->Enable(true);
+  }
 }
 
 void MainFrame::OnSaveLoopback(wxCommandEvent& WXUNUSED(event)) {
@@ -2130,6 +2193,8 @@ void MainFrame::OnFrmStart(wxCommandEvent& WXUNUSED(event)) {
                    wxT("扫频启动失败"), wxOK | wxICON_ERROR, this);
     }
   } else {
+    m_autoLoopback = false;
+    button_frm_auto_reference->Enable(true);
     frm_running = false;
     button_frm_start->SetValue(false);
     button_frm_start->SetLabel(wxT("开始扫频"));

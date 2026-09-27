@@ -69,6 +69,8 @@ class MainFrame : public wxFrame {
   void OnFrmStart(wxCommandEvent& event);
   void OnSweepViewChanged(wxCommandEvent& event);
   void OnCaptureLoopback(wxCommandEvent& event);
+  void OnAutoLoopback(wxCommandEvent& event);
+  bool CaptureLoopback(bool confirmWiring);
   void OnSaveLoopback(wxCommandEvent& event);
   void OnLoadLoopback(wxCommandEvent& event);
   bool GetSelectedDeviceNames(unsigned int recordId, unsigned int playId,
@@ -217,6 +219,7 @@ class MainFrame : public wxFrame {
   wxChoice* choice_frm_output;
   wxCheckBox* checkbox_frm_correct;
   wxButton* button_frm_reference;
+  wxButton* button_frm_auto_reference;
   wxButton* button_frm_save_reference;
   wxButton* button_frm_load_reference;
   wxStaticText* label_frm_calibration;
@@ -237,6 +240,7 @@ class MainFrame : public wxFrame {
   double frm_input_gain;
   int frm_output_channel;
   bool m_sweepComplete;
+  bool m_autoLoopback;
   double m_sweepLevelDbfs;
   unsigned int m_sweepRate;
   unsigned int m_sweepRecordDev;
