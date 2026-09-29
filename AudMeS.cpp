@@ -1601,6 +1601,11 @@ void MainFrame::DrawFreqResponse(void) {
     const wxString high = result.hasHighCutoff ?
         wxString::Format(wxT("%.0f Hz"), result.highCutoffHz) : wxT("范围内未见");
     summary += names[c] + wxT("：−3 dB 低端 ") + low + wxT("；高端 ") + high;
+    const SweepRipple ripple = AnalyzeSweepRipple(frequencies, c == 0 ? leftRms : rightRms);
+    summary += ripple.valid ? wxString::Format(
+        wxT("；20 Hz–20 kHz 采样峰峰差 %.3f dB%s"), ripple.peakToPeakDb,
+        corrected && c == captureChannel ? wxT("（回环补偿）") : wxT("（原始）")) :
+        wxString(wxT("；峰峰差 --（频段未覆盖或数据无效）"));
     if (result.hasLowCutoff)
       markers.push_back({result.lowCutoffHz, names[c] + wxT(" −3 dB"), colors[c]});
     if (result.hasHighCutoff)

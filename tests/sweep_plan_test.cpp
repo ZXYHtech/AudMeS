@@ -5,6 +5,20 @@
 #include <vector>
 
 int main() {
+  const SweepRipple ripple = AnalyzeSweepRipple({20.0, 1000.0, 20000.0},
+      {1.0, std::pow(10.0, 1.0 / 20.0), std::pow(10.0, -1.0 / 20.0)});
+  const SweepRipple interpolatedRipple = AnalyzeSweepRipple(
+      {10.0, 100.0, 1000.0, 10000.0, 40000.0}, {1.0, 1.0, 2.0, 1.0, 1.0});
+  if (!ripple.valid || std::fabs(ripple.peakToPeakDb - 2.0) > 1e-10 ||
+      !interpolatedRipple.valid ||
+      std::fabs(interpolatedRipple.peakToPeakDb - 20.0 * std::log10(2.0)) > 1e-10 ||
+      AnalyzeSweepRipple({100.0, 20000.0}, {1.0, 1.0}).valid ||
+      AnalyzeSweepRipple({20.0, 20000.0}, {1.0, 0.0}).valid ||
+      AnalyzeSweepRipple({20.0, 20.0, 20000.0}, {1.0, 1.0, 1.0}).valid ||
+      AnalyzeSweepRipple({20.0, 20000.0}, {1.0, 1.0}, 1000.0, 20.0).valid) {
+    std::cerr << "Sweep ripple or invalid-band guard failed\n";
+    return 1;
+  }
   const std::vector<double> logarithmic =
       BuildSweepFrequencies(20.0, 20000.0, 4, true, 48000.0);
   if (logarithmic.size() != 4 || std::fabs(logarithmic[0] - 20.0) > 1e-9 ||

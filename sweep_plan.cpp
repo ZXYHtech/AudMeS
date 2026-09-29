@@ -86,6 +86,34 @@ SweepAnalysis AnalyzeSweepChannel(const std::vector<double>& frequencies,
   return result;
 }
 
+SweepRipple AnalyzeSweepRipple(const std::vector<double>& frequencies,
+                               const std::vector<double>& rms,
+                               double lowHz, double highHz) {
+  SweepRipple result;
+  if (!std::isfinite(lowHz) || !std::isfinite(highHz) || lowHz <= 0.0 ||
+      highHz <= lowHz || frequencies.size() < 2 || frequencies.size() != rms.size())
+    return result;
+  for (size_t i = 0; i < frequencies.size(); ++i)
+    if (!std::isfinite(frequencies[i]) || frequencies[i] <= 0.0 ||
+        !std::isfinite(rms[i]) || rms[i] <= 0.0 ||
+        (i && frequencies[i] <= frequencies[i - 1])) return result;
+  if (frequencies.front() > lowHz || frequencies.back() < highHz) return result;
+  const SweepAnalysis low = AnalyzeSweepChannel(frequencies, rms, lowHz);
+  const SweepAnalysis high = AnalyzeSweepChannel(frequencies, rms, highHz);
+  if (!low.hasReference || !high.hasReference) return result;
+  double minimum = std::fmin(low.referenceDb, high.referenceDb);
+  double maximum = std::fmax(low.referenceDb, high.referenceDb);
+  for (size_t i = 0; i < frequencies.size(); ++i) {
+    if (frequencies[i] < lowHz || frequencies[i] > highHz) continue;
+    const double db = 20.0 * std::log10(rms[i]);
+    minimum = std::fmin(minimum, db);
+    maximum = std::fmax(maximum, db);
+  }
+  result.peakToPeakDb = maximum - minimum;
+  result.valid = true;
+  return result;
+}
+
 std::vector<double> CorrectSweepRms(const std::vector<double>& frequencies,
                                     const std::vector<double>& rms,
                                     const std::vector<double>& referenceFrequencies,
