@@ -299,9 +299,10 @@ MainFrame::MainFrame(wxWindow* parent, int id, const wxString& title, const wxPo
       wxT("确认输入增益/接线与电压基准一致（仅约 1 kHz 左输入）"));
   label_thd_value = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("THD  -- %"));
   label_harmonics_value = new wxStaticText(
-      notebook_1_spe, wxID_ANY, wxT("H2  -- dBc · H3  -- dBc · H4  -- dBc · H5  -- dBc"));
+      notebook_1_spe, wxID_ANY,
+      wxT("H2 -- · H3 -- · H4 -- · H5 -- · H6 -- dBc\nH7 -- · H8 -- · H9 -- · H10 -- dBc"));
   label_thdn_sinad_value = new wxStaticText(
-      notebook_1_spe, wxID_ANY, wxT("THD+N  -- % · SINAD  -- dB"));
+      notebook_1_spe, wxID_ANY, wxT("THD+N  -- % / -- dB · SINAD  -- dB"));
   label_snr_noise_value = new wxStaticText(
       notebook_1_spe, wxID_ANY, wxT("SNR  -- dB · 底噪  -- dBFS/Hz（20 Hz–20 kHz）"));
 
@@ -2152,8 +2153,9 @@ void MainFrame::DrawSpectrum(void) {
   const SpectrumMetrics metrics =
       AnalyzeSpectrum(powerBins, nsampl, m_SamplingFreq, choice_fft->GetSelection());
   wxString harmonics;
-  for (int harmonic = 2; harmonic <= 5; ++harmonic) {
-    if (harmonic > 2) harmonics += wxT(" · ");
+  for (int harmonic = 2; harmonic <= 10; ++harmonic) {
+    if (harmonic == 7) harmonics += wxT("\n");
+    else if (harmonic > 2) harmonics += wxT(" · ");
     harmonics += metrics.hasHarmonic[harmonic - 2]
                      ? wxString::Format(wxT("H%d  %.2f dBc"), harmonic,
                                         metrics.harmonicsDbc[harmonic - 2])
@@ -2162,9 +2164,9 @@ void MainFrame::DrawSpectrum(void) {
   label_harmonics_value->SetLabel(harmonics);
   label_thdn_sinad_value->SetLabel(
       metrics.hasThdn
-          ? wxString::Format(wxT("THD+N  %.6f %% · SINAD  %.2f dB"),
-                             metrics.thdnPercent, metrics.sinadDb)
-          : wxString(wxT("THD+N  -- % · SINAD  -- dB")));
+          ? wxString::Format(wxT("THD+N  %.6f %% / %.2f dB · SINAD  %.2f dB"),
+                             metrics.thdnPercent, metrics.thdnDb, metrics.sinadDb)
+          : wxString(wxT("THD+N  -- % / -- dB · SINAD  -- dB")));
   const wxString snr = metrics.hasSnr
                            ? wxString::Format(wxT("%.2f dB"), metrics.snrDb)
                            : wxString(wxT("-- dB"));

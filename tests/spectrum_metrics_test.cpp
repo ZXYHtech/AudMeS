@@ -26,6 +26,18 @@ int main() {
   power[2000] += 0.00005;
   SpectrumMetrics result = AnalyzeSpectrum(power, size, 8192.0, 0);
   bool ok = true;
+  std::vector<double> allHarmonics(size / 2, 0.0);
+  allHarmonics[100] = 0.5;
+  for (int harmonic = 2; harmonic <= 10; ++harmonic)
+    allHarmonics[100 * harmonic] = 0.5e-6;
+  const SpectrumMetrics extended = AnalyzeSpectrum(allHarmonics, size, 8192.0, 0);
+  for (int harmonic = 2; harmonic <= 10; ++harmonic)
+    ok &= Check(extended.hasHarmonic[harmonic - 2] &&
+        Near(extended.harmonicsDbc[harmonic - 2], -60.0, 1e-9),
+        "H2-H10 independent readout failed");
+  ok &= Check(extended.hasThdn && Near(extended.thdPercent, 0.3, 1e-9) &&
+      Near(extended.thdnDb, 20.0 * std::log10(extended.thdnPercent / 100.0), 1e-9),
+      "THD+N dB and percent consistency failed");
   ok &= Check(result.hasFundamental && Near(result.fundamentalHz, 1000.0, 0.01),
               "Fundamental detection failed");
   ok &= Check(Near(result.fundamentalDbfs, 0.0, 0.01), "dBFS normalization failed");

@@ -87,7 +87,7 @@ SpectrumMetrics AnalyzeSpectrum(const std::vector<double>& powerBins, int fftSiz
     if (lo > hi) continue;
     const double band = BandPower(powerBins, lo, hi);
     harmonicPower += band;
-    if (harmonic <= 5 && band > 0.0) {
+    if (band > 0.0) {
       result.hasHarmonic[harmonic - 2] = true;
       result.harmonicsDbc[harmonic - 2] = 10.0 * std::log10(band / peakPower);
     }
@@ -111,6 +111,7 @@ SpectrumMetrics AnalyzeSpectrum(const std::vector<double>& powerBins, int fftSiz
   if (tonePresent && residualPower > 0.0) {
     result.hasThdn = true;
     result.thdnPercent = 100.0 * std::sqrt(residualPower / peakPower);
+    result.thdnDb = 10.0 * std::log10(residualPower / peakPower);
     result.sinadDb = 10.0 * std::log10((peakPower + residualPower) / residualPower);
   }
   if (tonePresent && noisePower > 0.0) {

@@ -14,11 +14,12 @@ struct SpectrumMetrics {
   double fundamentalDbfs = 0.0;
   double thdPercent = 0.0;
   double thdnPercent = 0.0;
+  double thdnDb = 0.0;
   double sinadDb = 0.0;
   double snrDb = 0.0;
   double noiseFloorDbfsPerHz = 0.0;
-  double harmonicsDbc[4] = {0.0, 0.0, 0.0, 0.0};
-  bool hasHarmonic[4] = {false, false, false, false};
+  double harmonicsDbc[9] = {};
+  bool hasHarmonic[9] = {};
 };
 
 // Measures the left channel over 20 Hz to min(20 kHz, Nyquist).
