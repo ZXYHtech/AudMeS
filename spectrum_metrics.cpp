@@ -29,16 +29,21 @@ int NotchRadius(int windowChoice) {
 }  // namespace
 
 SpectrumMetrics AnalyzeSpectrum(const std::vector<double>& powerBins, int fftSize,
-                                double sampleRate, int windowChoice) {
+                                double sampleRate, int windowChoice,
+                                double lowHz, double highHz) {
   SpectrumMetrics result;
-  if (fftSize < 128 || sampleRate <= 0.0 ||
+  if (fftSize < 128 || !std::isfinite(sampleRate) || sampleRate <= 0.0 ||
+      !std::isfinite(lowHz) || !std::isfinite(highHz) || lowHz <= 0.0 ||
+      highHz <= lowHz || lowHz >= sampleRate / 2.0 ||
       powerBins.size() != static_cast<std::size_t>(fftSize / 2)) return result;
 
   const double binHz = sampleRate / fftSize;
-  const int first = std::max(1, static_cast<int>(std::ceil(20.0 / binHz)));
+  const int first = std::max(1, static_cast<int>(std::ceil(lowHz / binHz)));
   const int last = std::min(static_cast<int>(powerBins.size()) - 1,
-                            static_cast<int>(std::floor(20000.0 / binHz)));
+      static_cast<int>(std::floor(std::min(highHz, sampleRate / 2.0) / binHz)));
   if (first >= last) return result;
+  result.bandLowHz = first * binHz;
+  result.bandHighHz = last * binHz;
 
   int peak = first;
   for (int bin = first; bin <= last; ++bin) {

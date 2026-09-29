@@ -257,6 +257,11 @@ MainFrame::MainFrame(wxWindow* parent, int id, const wxString& title, const wxPo
                                          wxT("Blackman-Harris")};
   choice_fft = new wxChoice(notebook_1_spe, ID_FFTWINDOW, wxDefaultPosition, wxDefaultSize, 4,
                             choice_fft_choices, 0);
+  const wxString bandwidthChoices[] = {wxT("20 Hz–20 kHz"), wxT("20 Hz–10 kHz"),
+                                       wxT("20 Hz–40 kHz（受采样率限制）")};
+  choice_fft_bandwidth = new wxChoice(notebook_1_spe, wxID_ANY, wxDefaultPosition,
+                                     wxDefaultSize, 3, bandwidthChoices);
+  choice_fft_bandwidth->SetSelection(0);
 
   label_9 = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("FFT 点数"));
   const wxString choice_fftlength_choices[] = {
@@ -1035,6 +1040,9 @@ void MainFrame::do_layout() {
   sizer_spe_samples->Add(5, 5, 1, 0, 0);
   sizer_spe_samples->Add(choice_fftlength, 0, wxALL, 5);
   sizer_spe_fft->Add(sizer_spe_samples, 1, wxEXPAND, 0);
+  sizer_spe_fft->Add(new wxStaticText(notebook_1_spe, wxID_ANY,
+      wxT("读数积分带宽（非图形缩放）")), 0, wxLEFT | wxRIGHT | wxTOP, 5);
+  sizer_spe_fft->Add(choice_fft_bandwidth, 0, wxALL | wxEXPAND, 5);
   sizer_spe_ctrl->Add(sizer_spe_fft, 0, wxALL | wxEXPAND, 5);
 
   sizer_spe_span->Add(label_rx, 0, wxALL | wxALIGN_CENTER_HORIZONTAL | wxALIGN_CENTER_VERTICAL, 5);
@@ -2150,8 +2158,10 @@ void MainFrame::DrawSpectrum(void) {
     }
   }
 
-  const SpectrumMetrics metrics =
-      AnalyzeSpectrum(powerBins, nsampl, m_SamplingFreq, choice_fft->GetSelection());
+  const double upperHz = choice_fft_bandwidth->GetSelection() == 1 ? 10000.0 :
+      choice_fft_bandwidth->GetSelection() == 2 ? 40000.0 : 20000.0;
+  const SpectrumMetrics metrics = AnalyzeSpectrum(powerBins, nsampl, m_SamplingFreq,
+      choice_fft->GetSelection(), 20.0, upperHz);
   wxString harmonics;
   for (int harmonic = 2; harmonic <= 10; ++harmonic) {
     if (harmonic == 7) harmonics += wxT("\n");
@@ -2175,7 +2185,8 @@ void MainFrame::DrawSpectrum(void) {
                                                 metrics.noiseFloorDbfsPerHz)
                              : wxString(wxT("-- dBFS/Hz"));
   label_snr_noise_value->SetLabel(
-      wxString::Format(wxT("SNR  %s · 底噪  %s（20 Hz–20 kHz）"), snr.c_str(), noise.c_str()));
+      wxString::Format(wxT("SNR  %s · 底噪  %s（积分频点 %.1f–%.1f Hz，未计权）"),
+          snr.c_str(), noise.c_str(), metrics.bandLowHz, metrics.bandHighHz));
   if (metrics.hasFundamental) {
     label_fft_freq_value->SetLabel(
         wxString::Format(wxT("基波  %.2f Hz"), metrics.fundamentalHz));

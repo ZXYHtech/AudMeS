@@ -26,6 +26,16 @@ int main() {
   power[2000] += 0.00005;
   SpectrumMetrics result = AnalyzeSpectrum(power, size, 8192.0, 0);
   bool ok = true;
+  std::vector<double> bandwidthPower(32768 / 2, 1e-12);
+  bandwidthPower[1000] = 0.5;
+  bandwidthPower[12000] = 0.00005;
+  const SpectrumMetrics narrow = AnalyzeSpectrum(bandwidthPower, 32768, 32768.0, 0, 20.0, 10000.0);
+  const SpectrumMetrics wide = AnalyzeSpectrum(bandwidthPower, 32768, 32768.0, 0, 20.0, 20000.0);
+  ok &= Check(narrow.hasThdn && wide.hasThdn && wide.thdnPercent > narrow.thdnPercent * 10.0 &&
+      narrow.bandHighHz == 10000.0 && wide.bandHighHz == 16383.0 &&
+      !AnalyzeSpectrum(bandwidthPower, 32768, 32768.0, 0, 20000.0, 10000.0).hasFundamental &&
+      !AnalyzeSpectrum(bandwidthPower, 32768, NAN, 0).hasFundamental,
+      "Integration bandwidth selection or Nyquist limit failed");
   std::vector<double> allHarmonics(size / 2, 0.0);
   allHarmonics[100] = 0.5;
   for (int harmonic = 2; harmonic <= 10; ++harmonic)

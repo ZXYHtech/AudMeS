@@ -18,13 +18,16 @@ struct SpectrumMetrics {
   double sinadDb = 0.0;
   double snrDb = 0.0;
   double noiseFloorDbfsPerHz = 0.0;
+  double bandLowHz = 0.0;
+  double bandHighHz = 0.0;
   double harmonicsDbc[9] = {};
   bool hasHarmonic[9] = {};
 };
 
-// Measures the left channel over 20 Hz to min(20 kHz, Nyquist).
+// Measures within the requested band, limited to available non-DC FFT bins.
 // windowChoice follows the FFT page: Rect, Hann, Blackman, Blackman-Harris.
 SpectrumMetrics AnalyzeSpectrum(const std::vector<double>& powerBins, int fftSize,
-                                double sampleRate, int windowChoice);
+                                double sampleRate, int windowChoice,
+                                double lowHz = 20.0, double highHz = 20000.0);
 
 #endif  // AUDMES_SPECTRUM_METRICS_H
