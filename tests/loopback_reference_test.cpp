@@ -60,6 +60,15 @@ int main() {
     return 1;
   }
   voltageReference.measuredVrmsAt1k = -1.0;
+  if (!LoopbackToneDbfsToVrms(restored, 1000.0,
+          20.0 * std::log10(original.rms[1] * std::sqrt(2.0)), 0, &volts) ||
+      std::fabs(volts - 0.01) > 1e-12 ||
+      LoopbackToneDbfsToVrms(restored, 2000.0, -40.0, 0, &volts) ||
+      LoopbackToneDbfsToVrms(restored, 1000.0, -40.0, 1, &volts) ||
+      LoopbackToneDbfsToVrms(restored, 1000.0, 1.0, 0, &volts)) {
+    std::cerr << "FFT voltage scale or calibration guard failed\n";
+    return 1;
+  }
   if (ValidateLoopbackReference(voltageReference, &error)) return 1;
   voltageReference.measuredVrmsAt1k = NAN;
   if (ValidateLoopbackReference(voltageReference, &error)) return 1;

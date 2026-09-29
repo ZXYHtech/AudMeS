@@ -88,6 +88,17 @@ bool LoopbackRmsToVrmsAt1k(const LoopbackReference& reference, double digitalRms
   return true;
 }
 
+bool LoopbackToneDbfsToVrms(const LoopbackReference& reference, double frequencyHz,
+                           double toneDbfs, int captureChannel, double* volts) {
+  // The FFT uses full-scale sine power as 0 dBFS; Sweep stores raw sample RMS.
+  // A single-frequency voltage reference is not a broadband calibration.
+  if (!std::isfinite(frequencyHz) || std::fabs(frequencyHz - 1000.0) > 10.0 ||
+      !std::isfinite(toneDbfs) || toneDbfs > 0.0 ||
+      captureChannel != reference.captureChannel) return false;
+  return LoopbackRmsToVrmsAt1k(reference,
+      std::pow(10.0, toneDbfs / 20.0) / std::sqrt(2.0), volts);
+}
+
 bool LoopbackMatchesRoute(const LoopbackReference& reference, const std::string& api,
                           const std::string& recordDevice, const std::string& playDevice,
                           unsigned int sampleRate, int outputChannel, double levelDbfs) {

@@ -228,6 +228,7 @@ class MainFrame : public wxFrame {
   wxButton* button_frm_save_reference;
   wxButton* button_frm_load_reference;
   wxButton* button_frm_voltage_reference;
+  wxCheckBox* checkbox_fft_voltage_confirm;
   wxStaticText* label_frm_calibration;
   wxStaticText* label_frm_summary;
   wxTextCtrl* text_ctrl2_frm;

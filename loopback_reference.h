@@ -28,6 +28,8 @@ struct DualOutputBalance {
 bool ValidateLoopbackReference(const LoopbackReference& reference, std::string* error);
 bool LoopbackRmsToVrmsAt1k(const LoopbackReference& reference, double digitalRms,
                           double* volts);
+bool LoopbackToneDbfsToVrms(const LoopbackReference& reference, double frequencyHz,
+                           double toneDbfs, int captureChannel, double* volts);
 bool LoopbackMatchesRoute(const LoopbackReference& reference, const std::string& api,
                           const std::string& recordDevice, const std::string& playDevice,
                           unsigned int sampleRate, int outputChannel, double levelDbfs);

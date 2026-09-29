@@ -295,6 +295,8 @@ MainFrame::MainFrame(wxWindow* parent, int id, const wxString& title, const wxPo
       new wxButton(notebook_1_spe, ID_FFT_PEAK_RESET, wxT("清除峰值"));
   label_fft_freq_value = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("基波  -- Hz"));
   label_fft_mag_value = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("幅度  -- dBFS"));
+  checkbox_fft_voltage_confirm = new wxCheckBox(notebook_1_spe, wxID_ANY,
+      wxT("确认输入增益/接线与电压基准一致（仅约 1 kHz 左输入）"));
   label_thd_value = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("THD  -- %"));
   label_harmonics_value = new wxStaticText(
       notebook_1_spe, wxID_ANY, wxT("H2  -- dBc · H3  -- dBc · H4  -- dBc · H5  -- dBc"));
@@ -1073,6 +1075,7 @@ void MainFrame::do_layout() {
   sizer_spe_metrics->Add(label_fft_mag_value, 1, wxALL | wxALIGN_CENTER_VERTICAL, 8);
   sizer_spe_metrics->Add(label_thd_value, 1, wxALL | wxALIGN_CENTER_VERTICAL, 8);
   sizer_spe_9->Add(sizer_spe_metrics, 0, wxLEFT | wxRIGHT | wxEXPAND, 8);
+  sizer_spe_9->Add(checkbox_fft_voltage_confirm, 0, wxLEFT | wxRIGHT | wxBOTTOM, 8);
   sizer_spe_9->Add(label_harmonics_value, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 16);
   sizer_spe_9->Add(label_thdn_sinad_value, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 16);
   sizer_spe_9->Add(label_snr_noise_value, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 16);
@@ -1751,6 +1754,7 @@ bool MainFrame::CaptureLoopback(bool confirmWiring) {
   m_loopbackPlayDev = m_sweepPlayDev;
   m_loopbackLevelDbfs = m_sweepLevelDbfs;
   m_loopbackMeasuredVrms = 0.0;
+  checkbox_fft_voltage_confirm->SetValue(false);
   m_loopbackAt = wxString::FromUTF8(reference.capturedAt.c_str());
   m_loopbackApiName = reference.api;
   m_loopbackRecordName = reference.recordDevice;
@@ -1941,6 +1945,7 @@ void MainFrame::OnVoltageReference(wxCommandEvent& WXUNUSED(event)) {
   }
   if (peakToPeak) voltage /= 2.0 * std::sqrt(2.0);
   reference.measuredVrmsAt1k = voltage;
+  checkbox_fft_voltage_confirm->SetValue(false);
   if (dual) m_dualOutput[output] = reference;
   else m_loopbackMeasuredVrms = voltage;
   DrawFreqResponse();
@@ -2003,6 +2008,7 @@ void MainFrame::OnLoadLoopback(wxCommandEvent& WXUNUSED(event)) {
   m_loopbackCaptureChannel = reference.captureChannel;
   m_loopbackLevelDbfs = reference.levelDbfs;
   m_loopbackMeasuredVrms = reference.measuredVrmsAt1k;
+  checkbox_fft_voltage_confirm->SetValue(false);
   m_loopbackFrequencies = reference.frequencies;
   m_loopbackRms = reference.rms;
   m_loopbackValid = true;
@@ -2166,8 +2172,24 @@ void MainFrame::DrawSpectrum(void) {
   if (metrics.hasFundamental) {
     label_fft_freq_value->SetLabel(
         wxString::Format(wxT("基波  %.2f Hz"), metrics.fundamentalHz));
-    label_fft_mag_value->SetLabel(
-        wxString::Format(wxT("幅度  %.2f dBFS"), metrics.fundamentalDbfs));
+    wxString amplitude = wxString::Format(wxT("幅度  %.2f dBFS"), metrics.fundamentalDbfs);
+    const int selectedOutput = choice_frm_output->GetSelection();
+    const bool selectedDual = m_dualOutputValid && selectedOutput >= 0 && selectedOutput < 2;
+    const LoopbackReference voltageReference = selectedDual ?
+        m_dualOutput[selectedOutput] : CurrentLoopbackReference();
+    double volts = 0.0;
+    const bool routeMatches = m_RecordDev == m_loopbackRecordDev &&
+        m_PlayDev == m_loopbackPlayDev && m_SamplingFreq == voltageReference.sampleRate &&
+        voltageReference.api == m_RWAudio->GetCurrentApiName();
+    if (checkbox_fft_voltage_confirm->GetValue() && routeMatches &&
+        (selectedDual || (m_loopbackValid && !m_dualOutputValid)) &&
+        LoopbackToneDbfsToVrms(voltageReference, metrics.fundamentalHz,
+                              metrics.fundamentalDbfs, 0, &volts)) {
+      amplitude += wxString::Format(wxT("\n1 kHz 基准换算 %.6f Vrms"), volts);
+    } else {
+      amplitude += wxT("\nVrms --（无有效基准/条件未确认）");
+    }
+    label_fft_mag_value->SetLabel(amplitude);
     label_thd_value->SetLabel(
         wxString::Format(wxT("THD  %.6f %%"), metrics.thdPercent));
     label_latest_result->SetLabel(wxString::Format(
