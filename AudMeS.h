@@ -186,6 +186,8 @@ class MainFrame : public wxFrame {
   wxStaticText* label_5;
   wxChoice* choice_fft;
   wxChoice* choice_fft_bandwidth;
+  wxCheckBox* checkbox_fft_a_weighting;
+  wxStaticText* label_integrated_noise;
   wxStaticText* label_9;
   wxChoice* choice_fftlength;
   wxStaticText* label_rx;

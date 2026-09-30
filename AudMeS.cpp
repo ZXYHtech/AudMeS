@@ -262,6 +262,8 @@ MainFrame::MainFrame(wxWindow* parent, int id, const wxString& title, const wxPo
   choice_fft_bandwidth = new wxChoice(notebook_1_spe, wxID_ANY, wxDefaultPosition,
                                      wxDefaultSize, 3, bandwidthChoices);
   choice_fft_bandwidth->SetSelection(0);
+  checkbox_fft_a_weighting = new wxCheckBox(notebook_1_spe, wxID_ANY,
+      wxT("积分噪声使用 A 计权（THD+N / SNR 不变）"));
 
   label_9 = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("FFT 点数"));
   const wxString choice_fftlength_choices[] = {
@@ -310,6 +312,8 @@ MainFrame::MainFrame(wxWindow* parent, int id, const wxString& title, const wxPo
       notebook_1_spe, wxID_ANY, wxT("THD+N  -- % / -- dB · SINAD  -- dB"));
   label_snr_noise_value = new wxStaticText(
       notebook_1_spe, wxID_ANY, wxT("SNR  -- dB · 底噪  -- dBFS/Hz（20 Hz–20 kHz）"));
+  label_integrated_noise = new wxStaticText(notebook_1_spe, wxID_ANY,
+      wxT("积分噪声  -- dBFS（未计权）"));
 
 
   /* Frequency response */
@@ -1043,6 +1047,7 @@ void MainFrame::do_layout() {
   sizer_spe_fft->Add(new wxStaticText(notebook_1_spe, wxID_ANY,
       wxT("读数积分带宽（非图形缩放）")), 0, wxLEFT | wxRIGHT | wxTOP, 5);
   sizer_spe_fft->Add(choice_fft_bandwidth, 0, wxALL | wxEXPAND, 5);
+  sizer_spe_fft->Add(checkbox_fft_a_weighting, 0, wxALL, 5);
   sizer_spe_ctrl->Add(sizer_spe_fft, 0, wxALL | wxEXPAND, 5);
 
   sizer_spe_span->Add(label_rx, 0, wxALL | wxALIGN_CENTER_HORIZONTAL | wxALIGN_CENTER_VERTICAL, 5);
@@ -1080,6 +1085,7 @@ void MainFrame::do_layout() {
   label_harmonics_value->SetFont(metricFont);
   label_thdn_sinad_value->SetFont(metricFont);
   label_snr_noise_value->SetFont(metricFont);
+  label_integrated_noise->SetFont(metricFont);
   sizer_spe_metrics->Add(label_fft_freq_value, 1, wxALL | wxALIGN_CENTER_VERTICAL, 8);
   sizer_spe_metrics->Add(label_fft_mag_value, 1, wxALL | wxALIGN_CENTER_VERTICAL, 8);
   sizer_spe_metrics->Add(label_thd_value, 1, wxALL | wxALIGN_CENTER_VERTICAL, 8);
@@ -1088,6 +1094,7 @@ void MainFrame::do_layout() {
   sizer_spe_9->Add(label_harmonics_value, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 16);
   sizer_spe_9->Add(label_thdn_sinad_value, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 16);
   sizer_spe_9->Add(label_snr_noise_value, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 16);
+  sizer_spe_9->Add(label_integrated_noise, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 16);
   wxBoxSizer* spectrumActions = new wxBoxSizer(wxHORIZONTAL);
   spectrumActions->Add(checkbox_spe_peak_hold, 0, wxRIGHT | wxALIGN_CENTER_VERTICAL, 12);
   spectrumActions->Add(button_spe_peak_reset, 0, wxRIGHT | wxALIGN_CENTER_VERTICAL, 12);
@@ -2187,6 +2194,13 @@ void MainFrame::DrawSpectrum(void) {
   label_snr_noise_value->SetLabel(
       wxString::Format(wxT("SNR  %s · 底噪  %s（积分频点 %.1f–%.1f Hz，未计权）"),
           snr.c_str(), noise.c_str(), metrics.bandLowHz, metrics.bandHighHz));
+  label_integrated_noise->SetLabel(metrics.hasIntegratedNoise ? wxString::Format(
+      checkbox_fft_a_weighting->GetValue() ?
+          wxT("积分噪声  %.2f dBFS（A 计权；频点 %.1f–%.1f Hz）") :
+          wxT("积分噪声  %.2f dBFS（未计权；频点 %.1f–%.1f Hz）"),
+      checkbox_fft_a_weighting->GetValue() ? metrics.aWeightedNoiseDbfs :
+          metrics.integratedNoiseDbfs, metrics.bandLowHz, metrics.bandHighHz) :
+      wxString(wxT("积分噪声  -- dBFS")));
   if (metrics.hasFundamental) {
     label_fft_freq_value->SetLabel(
         wxString::Format(wxT("基波  %.2f Hz"), metrics.fundamentalHz));

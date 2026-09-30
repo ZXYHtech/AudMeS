@@ -26,6 +26,20 @@ int main() {
   power[2000] += 0.00005;
   SpectrumMetrics result = AnalyzeSpectrum(power, size, 8192.0, 0);
   bool ok = true;
+  std::vector<double> lowNoise(size / 2, 1e-12);
+  lowNoise[1000] = 0.5;
+  lowNoise[100] = 1e-5;
+  const SpectrumMetrics weighted = AnalyzeSpectrum(lowNoise, size, 8192.0, 0);
+  ok &= Check(weighted.hasIntegratedNoise &&
+      weighted.aWeightedNoiseDbfs < weighted.integratedNoiseDbfs - 15.0,
+      "A-weighted low-frequency noise attenuation failed");
+  std::vector<double> referenceNoise(size / 2, 1e-12);
+  referenceNoise[2000] = 0.5;
+  referenceNoise[1000] = 1e-5;
+  const SpectrumMetrics at1k = AnalyzeSpectrum(referenceNoise, size, 8192.0, 0);
+  ok &= Check(at1k.hasIntegratedNoise &&
+      Near(at1k.aWeightedNoiseDbfs, at1k.integratedNoiseDbfs, 0.01),
+      "A-weighting 1 kHz normalization failed");
   std::vector<double> bandwidthPower(32768 / 2, 1e-12);
   bandwidthPower[1000] = 0.5;
   bandwidthPower[12000] = 0.00005;

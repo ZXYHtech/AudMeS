@@ -26,6 +26,21 @@ int NotchRadius(int windowChoice) {
   }
 }
 
+double ARaw(double hz) {
+  const double f2 = hz * hz;
+  const double c1 = 20.6 * 20.6;
+  const double c2 = 107.7 * 107.7;
+  const double c3 = 737.9 * 737.9;
+  const double c4 = 12194.0 * 12194.0;
+  return c4 * f2 * f2 /
+      ((f2 + c1) * std::sqrt(f2 + c2) * std::sqrt(f2 + c3) * (f2 + c4));
+}
+
+double APowerGain(double hz) {
+  const double gain = ARaw(hz) / ARaw(1000.0);
+  return gain * gain;
+}
+
 }  // namespace
 
 SpectrumMetrics AnalyzeSpectrum(const std::vector<double>& powerBins, int fftSize,
@@ -102,6 +117,7 @@ SpectrumMetrics AnalyzeSpectrum(const std::vector<double>& powerBins, int fftSiz
 
   double residualPower = 0.0;
   double noisePower = 0.0;
+  double weightedNoisePower = 0.0;
   std::vector<double> noiseBins;
   noiseBins.reserve(last - first + 1);
   for (int bin = first; bin <= last; ++bin) {
@@ -109,6 +125,7 @@ SpectrumMetrics AnalyzeSpectrum(const std::vector<double>& powerBins, int fftSiz
     if (!tonePresent || bin < peak - radius || bin > peak + radius) residualPower += power;
     if (!excluded[bin]) {
       noisePower += power;
+      weightedNoisePower += power * APowerGain(bin * binHz);
       noiseBins.push_back(power);
     }
   }
@@ -122,6 +139,12 @@ SpectrumMetrics AnalyzeSpectrum(const std::vector<double>& powerBins, int fftSiz
   if (tonePresent && noisePower > 0.0) {
     result.hasSnr = true;
     result.snrDb = 10.0 * std::log10(peakPower / noisePower);
+  }
+  if (noisePower > 0.0 && weightedNoisePower > 0.0) {
+    result.hasIntegratedNoise = true;
+    result.integratedNoiseDbfs = 10.0 * std::log10(noisePower / fullScaleSinePower);
+    result.aWeightedNoiseDbfs =
+        10.0 * std::log10(weightedNoisePower / fullScaleSinePower);
   }
   if (!noiseBins.empty()) {
     const std::size_t middle = noiseBins.size() / 2;

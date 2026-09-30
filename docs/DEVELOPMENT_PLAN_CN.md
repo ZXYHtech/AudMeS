@@ -373,7 +373,12 @@ guide_assets/
 
 2026-09-29：积分带宽选择影响 FFT 分析读数，不是图形缩放。页面标注实际积分频点范围，
 超过 Nyquist 时自动限制到可用频点。当前仍未计权；各带宽硬件测量留待统一验收。
-- [ ] A-weighting 可选
+- [x] A-weighting 可选（仅积分噪声；THD+N / SNR 和底噪密度保持未计权）
+
+2026-09-30：A 计权按 1 kHz 归一化频率响应逐 FFT 频点乘功率后积分，
+显示数字 dBFS，不是声压级 dBA；默认关闭。实机噪声准确度和权重曲线
+仍需统一硬件验收，不能据此声称符合声级计标准。
+频率响应公式参照 [NI 关于 A 计权频域计算的说明](https://forums.ni.com/t5/DIAdem/How-I-can-use-a-acoustic-weighting-filter-dB-A-in-diadem-time/td-p/2193860)。
 - [x] THD+N dB / % 同时显示（残余/基波比；未测得有效残余时不显示）
 
 ### Noise

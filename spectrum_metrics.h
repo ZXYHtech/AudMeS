@@ -18,6 +18,9 @@ struct SpectrumMetrics {
   double sinadDb = 0.0;
   double snrDb = 0.0;
   double noiseFloorDbfsPerHz = 0.0;
+  bool hasIntegratedNoise = false;
+  double integratedNoiseDbfs = 0.0;
+  double aWeightedNoiseDbfs = 0.0;
   double bandLowHz = 0.0;
   double bandHighHz = 0.0;
   double harmonicsDbc[9] = {};
