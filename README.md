@@ -1,4 +1,90 @@
-# AUDio MEasurement System
+# AudMeS 测试分析仪（ZXYHtech 下游版本）
+
+> 基于 AudMeS GPLv2 开源项目继续开发。原作者、版权与 GPLv2 许可保持不变；上游来源见 [MIRROR_NOTICE.md](MIRROR_NOTICE.md)。
+
+## 当前改造方向（2026-09-18 Preview）
+
+- 默认中文界面
+- 仪器化主界面
+- 主页面聚焦 **FFT / THD / Sweep**
+- Windows 下自动识别 **TOPPING E4x4 Pre**（按 E4x4 / TOPPING 设备名匹配）
+- **SA-440F5 一键测试向导**
+- 7 步测试引导：设备检查、Loopback、增益、Sweep、THD、Noise、报告
+- 测试引导图采用可替换资源槽 `guide_assets/sa440f5_step_01.png` ~ `07.png`
+- Generator / Oscilloscope 保留为后台能力，供 Sweep 与自动测试调用
+
+当前开发分支：`feature/instrument-ui-cn-sa440f5`
+
+📌 [查看中文开发计划](docs/DEVELOPMENT_PLAN_CN.md)
+
+### FFT 读数说明
+
+FFT 页面以左声道单帧数据计算基波、H2–H5、THD、THD+N、SINAD、SNR 和底噪。
+功率积分范围为 20 Hz–20 kHz（采样率不足时截止到 Nyquist），基波与谐波使用
+与窗函数匹配的保护频带；SNR 排除这些频带，THD+N 只排除基波频带。
+幅度使用满幅正弦信号为 0 dBFS；底噪单位为 dBFS/Hz。未完成 Loopback 和输入增益
+校准前，这些数字不能换算成 DUT 输入端电压噪声。
+Peak Hold 只作用于左右声道的频谱曲线；基波、THD 等数字读数仍显示当前帧。
+启用 Peak Hold 时，FFT CSV 导出的是保持后的频谱曲线。
+
+Sweep 页面可设置 20 Hz–40 kHz 范围内的起止频率、2–120 个测量点、对数或线性
+扫频，以及 -80 至 -20 dBFS 的数字激励电平。实际截止频率受当前采样率限制，
+程序会为低频测量自动加长采集窗口。这里的 dBFS 是声卡数字输出设置，
+不是经校准的 DUT 输入端电压。扫频曲线可选择左右声道和 1 kHz 归一化，
+并显示相对 1 kHz 的双侧 −3 dB 截止点及图上标记。若测量范围未覆盖 1 kHz，
+这些相对指标不可用；CSV 仍保存原始 RMS，不包含归一化结果。
+激励声道可单独选择左、右或双路，默认仅左路。每次换频先丢弃两帧过渡采集数据。
+若已把音频接口输出直接接回输入，可完成一次扫频后点击“将当前实测设为 Loopback 基准”。
+若使用 E4x4 Pre 前耳机输出 1 → IN 3 的 TRS 直连接线，可点击
+“一键测量双输出基准”：确认直连、关闭 48 V 和直接监听后，软件依次单独激励
+耳机口左、右输出，以 20 Hz–20 kHz、24 点、−40 dBFS 分别测量同一个 IN3，
+记录两路输出的相对频响基准。仍需手动点击“保存基准”写入一个双输出文件。
+此模式不测量两个独立输入，也不提供绝对电压或“左右同时输出”的差分校准；
+单路输出扫频可按相应基准补偿。旧版单声道基准文件仍可载入。
+若要在同一条 TRS→IN3 回环线上测差分激励，可点击“一键测量差分基准（反相）”。
+它令耳机左右输出等幅反相，各以 −40 dBFS 扫频，并将所得回环频响作为独立的
+差分基准保存。该基准只匹配“左右反相输出”扫频，不能套用到单路或同相输出；
+它同样不是绝对电压校准，也不代表已测过 SA-440F5。
+SA-440F5 测试向导在 Loopback 步骤会检查已测或已载入的反相差分基准，
+包括当前音频后端、设备、采样率及 20 Hz–20 kHz 频段。未匹配时不能进入
+DUT 步骤；匹配后还须人工确认已断开直接回环并重新接线。向导仍是引导，
+不会自动给出 DUT 通过/不通过结论，也不能替代绝对电压、THD 或噪声校准。
+程序会记录采样率、音频后端、输入/输出设备名称、激励声道、电平和时间。
+点击“保存基准”可写入 `.audmes-loopback` 文件；重启后点击“载入基准”，
+软件先核对当前音频后端、设备名称和采样率，再恢复激励设置。
+开启补偿后，按该基准校正同条件下的后续扫频。基准频段必须覆盖被测频段，
+目前只支持一个输入声道，且不会在启动时自动载入文件。
+补偿结果是相对频响或相对增益，不能代替绝对电压校准；
+CSV 仍导出未补偿的原始 RMS。断开直接回环并接入 DUT 后，先核对接线和电平再测量。
+WASAPI 测量仅使用 Windows 输入、输出一致的实际采样率；要测 40 kHz，需先将两端
+的系统格式设为 96 kHz。不能通过软件重采样扩大声卡当前测量带宽。
+
+## Windows 中文预览版一键构建
+
+先安装 64 位 MSYS2 及 MinGW64 工具链，然后在资源管理器中双击
+`scripts/build_windows_portable.bat`。脚本会检查 GCC、CMake、Make、wxWidgets 3.2，
+自动获取 `fast-cpp-csv-parser`，执行 Release 构建和 CPack 打包，并递归补齐程序依赖的
+MinGW DLL。最终结果位于 `dist/`：
+
+- `AudMeS-cn-preview-win64/AudMeS.exe`
+- `AudMeS-YYYY.MM.DD-cn-preview-win64.zip`
+
+构建脚本隔离 GCC 组件及配套 zlib，以兼容系统目录存在旧 zlib1.dll 的电脑，
+并在交付前运行 FFT / Sweep 算法测试。2026-09-27 的编译及 E4x4 回环结果见
+[实测记录](docs/HARDWARE_TEST_2026-09-27.md)。
+
+只检查本机环境可运行：
+
+    powershell -ExecutionPolicy Bypass -File scripts/check_build_env.ps1
+
+清理本地构建和打包结果可双击 `scripts/clean_build.bat`。如果 MSYS2 不在默认位置，
+可在 PowerShell 中传入 `-Msys2Root`：
+
+    .\scripts\build_windows_portable.ps1 -Msys2Root D:\msys64
+
+---
+
+# 上游项目说明
 
 ## About
 

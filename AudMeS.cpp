@@ -21,6 +21,13 @@
 #include "AudMeS.h"
 
 #include <math.h>
+#include <cmath>
+#include <wx/dcmemory.h>
+#include <wx/datetime.h>
+#include <wx/file.h>
+#include <wx/filename.h>
+#include <wx/stdpaths.h>
+#include <wx/textdlg.h>
 
 #ifdef __WXMSW__
 #include <windows.h>
@@ -34,6 +41,8 @@
 #include "dlg_audiointerface.h"
 #include "event_ids.h"
 #include "fourier.h"
+#include "spectrum_metrics.h"
+#include "sweep_plan.h"
 
 wxIMPLEMENT_CLASS(MainFrame, wxFrame);
 
@@ -42,6 +51,15 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
   EVT_TOGGLEBUTTON(ID_GENSTART, MainFrame::OnGenStart)
   EVT_TOGGLEBUTTON(ID_OSCSTART, MainFrame::OnOscStart)
   EVT_TOGGLEBUTTON(ID_FRMSTART, MainFrame::OnFrmStart)
+  EVT_CHECKBOX(ID_SWEEP_NORMALIZE, MainFrame::OnSweepViewChanged)
+  EVT_CHOICE(ID_SWEEP_CHANNEL, MainFrame::OnSweepViewChanged)
+  EVT_CHECKBOX(ID_SWEEP_CORRECT, MainFrame::OnSweepViewChanged)
+  EVT_BUTTON(ID_SWEEP_REFERENCE, MainFrame::OnCaptureLoopback)
+  EVT_BUTTON(ID_SWEEP_AUTO_REFERENCE, MainFrame::OnAutoLoopback)
+  EVT_BUTTON(ID_SWEEP_DIFF_REFERENCE, MainFrame::OnAutoDifferentialLoopback)
+  EVT_BUTTON(ID_SWEEP_SAVE_REFERENCE, MainFrame::OnSaveLoopback)
+  EVT_BUTTON(ID_SWEEP_LOAD_REFERENCE, MainFrame::OnLoadLoopback)
+  EVT_BUTTON(ID_SWEEP_VOLTAGE_REFERENCE, MainFrame::OnVoltageReference)
   EVT_MENU(wxID_ABOUT, MainFrame::OnAboutClick)
   EVT_MENU(wxID_EXIT, MainFrame::OnExitClick)
   EVT_CLOSE(MainFrame::OnClose)
@@ -74,6 +92,19 @@ wxBEGIN_EVENT_TABLE(MainFrame, wxFrame)
   EVT_CHOICE(ID_FFTAVG, MainFrame::OnFFTAvgChanged)
   EVT_CHOICE(ID_FFTREF, MainFrame::OnFFTScaleChanged)
   EVT_CHOICE(ID_FFTDBDIV, MainFrame::OnFFTScaleChanged)
+  EVT_CHOICE(ID_FFTWINDOW, MainFrame::OnFFTWindowChanged)
+  EVT_CHECKBOX(ID_FFT_PEAK_HOLD, MainFrame::OnPeakHoldToggle)
+  EVT_BUTTON(ID_FFT_PEAK_RESET, MainFrame::OnPeakHoldReset)
+  EVT_BUTTON(ID_SA_START, MainFrame::OnSAStart)
+  EVT_BUTTON(ID_SA_PREV, MainFrame::OnSAPrev)
+  EVT_BUTTON(ID_SA_NEXT, MainFrame::OnSANext)
+  EVT_BUTTON(ID_SA_REPEAT, MainFrame::OnSARepeat)
+  EVT_BUTTON(ID_SA_AUDIO_SETUP, MainFrame::OnSAAudioSetup)
+  EVT_BUTTON(ID_SA_BASELINE_SWEEP, MainFrame::OnSABaselineSweep)
+  EVT_BUTTON(ID_DEVICE_REFRESH, MainFrame::OnDeviceRefresh)
+  EVT_BUTTON(ID_HOME_FFT, MainFrame::OnHomeFFT)
+  EVT_BUTTON(ID_HOME_SWEEP, MainFrame::OnHomeSweep)
+  EVT_BUTTON(ID_HOME_SA, MainFrame::OnHomeSA)
 wxEND_EVENT_TABLE()
 
 float* g_OscBuffer_Left;
@@ -92,7 +123,9 @@ MainFrame::MainFrame(wxWindow* parent, int id, const wxString& title, const wxPo
                      const wxSize& size, long WXUNUSED(style))
     : wxFrame(parent, id, title, pos, size, wxDEFAULT_FRAME_STYLE | wxFULL_REPAINT_ON_RESIZE) {
   // begin wxGlade: MainFrame::MainFrame
-  notebook_1 = new wxNotebook(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxNB_BOTTOM);
+  notebook_1 = new wxNotebook(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxNB_TOP);
+  notebook_1_home = new wxPanel(notebook_1, -1);
+  notebook_1_sa = new wxPanel(notebook_1, -1);
   notebook_1_spe = new wxPanel(notebook_1, -1);
   notebook_1_osc = new wxPanel(notebook_1, -1);
   notebook_1_gen = new wxPanel(notebook_1, -1);
@@ -102,29 +135,29 @@ MainFrame::MainFrame(wxWindow* parent, int id, const wxString& title, const wxPo
   sizer_osc_l_staticbox = new wxStaticBox(notebook_1_osc, wxID_ANY, wxT("Vertical Left"));
   sizer_osc_r_staticbox = new wxStaticBox(notebook_1_osc, wxID_ANY, wxT("Vertical Right"));
   sizer_osc_h_staticbox = new wxStaticBox(notebook_1_osc, wxID_ANY, wxT("Horizontal"));
-  sizer_spe_fft_staticbox = new wxStaticBox(notebook_1_spe, wxID_ANY, wxT("FFT"));
-  sizer_spe_disp_staticbox = new wxStaticBox(notebook_1_spe, wxID_ANY, wxT("Display"));
-  sizer_spe_scale_staticbox = new wxStaticBox(notebook_1_spe, wxID_ANY, wxT("Scale"));
-  sizer_frm_prop_staticbox = new wxStaticBox(notebook_1_frm, wxID_ANY, wxT("Properties"));
+  sizer_spe_fft_staticbox = new wxStaticBox(notebook_1_spe, wxID_ANY, wxT("FFT 分析"));
+  sizer_spe_disp_staticbox = new wxStaticBox(notebook_1_spe, wxID_ANY, wxT("频段"));
+  sizer_spe_scale_staticbox = new wxStaticBox(notebook_1_spe, wxID_ANY, wxT("显示量程"));
+  sizer_frm_prop_staticbox = new wxStaticBox(notebook_1_frm, wxID_ANY, wxT("扫频设置"));
   frame_1_menubar = new wxMenuBar();
   wxMenu* wxglade_tmp_menu_1 = new wxMenu();
-  wxglade_tmp_menu_1->Append(wxID_OPEN, wxT("&Open config...\tAlt+O"), wxT(""), wxITEM_NORMAL);
-  wxglade_tmp_menu_1->Append(wxID_SAVE, wxT("&Save config...\tAlt+S"), wxT(""), wxITEM_NORMAL);
-  wxglade_tmp_menu_1->Append(wxID_SAVEAS, wxT("Save &As"), wxT(""), wxITEM_NORMAL);
-  wxglade_tmp_menu_1->Append(ID_LOAD_FRM, wxT("Load freq.resp."), wxT(""), wxITEM_NORMAL);
-  wxglade_tmp_menu_1->Append(ID_SAVE_FRM, wxT("Save freq.resp."), wxT(""), wxITEM_NORMAL);
-  wxglade_tmp_menu_1->Append(ID_SAVE_SPE, wxT("Save spectrum"), wxT(""), wxITEM_NORMAL);
-  wxglade_tmp_menu_1->Append(ID_SAVE_OSC, wxT("Save oscillogram"), wxT(""), wxITEM_NORMAL);
+  wxglade_tmp_menu_1->Append(wxID_OPEN, wxT("打开配置...\tAlt+O"), wxT(""), wxITEM_NORMAL);
+  wxglade_tmp_menu_1->Append(wxID_SAVE, wxT("保存配置...\tAlt+S"), wxT(""), wxITEM_NORMAL);
+  wxglade_tmp_menu_1->Append(wxID_SAVEAS, wxT("另存为"), wxT(""), wxITEM_NORMAL);
+  wxglade_tmp_menu_1->Append(ID_LOAD_FRM, wxT("载入扫频数据"), wxT(""), wxITEM_NORMAL);
+  wxglade_tmp_menu_1->Append(ID_SAVE_FRM, wxT("保存扫频数据"), wxT(""), wxITEM_NORMAL);
+  wxglade_tmp_menu_1->Append(ID_SAVE_SPE, wxT("保存 FFT 数据"), wxT(""), wxITEM_NORMAL);
+  wxglade_tmp_menu_1->Append(ID_SAVE_OSC, wxT("保存波形数据"), wxT(""), wxITEM_NORMAL);
   wxglade_tmp_menu_1->AppendSeparator();
-  wxglade_tmp_menu_1->Append(wxID_EXIT, wxT("&Close\tAlt+F4"), wxT(""), wxITEM_NORMAL);
-  frame_1_menubar->Append(wxglade_tmp_menu_1, wxT("&File"));
+  wxglade_tmp_menu_1->Append(wxID_EXIT, wxT("退出\tAlt+F4"), wxT(""), wxITEM_NORMAL);
+  frame_1_menubar->Append(wxglade_tmp_menu_1, wxT("文件"));
   wxMenu* wxglade_tmp_menu_2 = new wxMenu();
-  wxglade_tmp_menu_2->Append(ID_SNDCARD, wxT("Audio &Interface Configuration..."), wxT(""),
+  wxglade_tmp_menu_2->Append(ID_SNDCARD, wxT("音频接口设置..."), wxT(""),
                              wxITEM_NORMAL);
-  frame_1_menubar->Append(wxglade_tmp_menu_2, wxT("&Tools"));
+  frame_1_menubar->Append(wxglade_tmp_menu_2, wxT("工具"));
   wxMenu* wxglade_tmp_menu_3 = new wxMenu();
-  wxglade_tmp_menu_3->Append(wxID_ABOUT, wxT("&About..."), wxT(""), wxITEM_NORMAL);
-  frame_1_menubar->Append(wxglade_tmp_menu_3, wxT("&Help"));
+  wxglade_tmp_menu_3->Append(wxID_ABOUT, wxT("关于..."), wxT(""), wxITEM_NORMAL);
+  frame_1_menubar->Append(wxglade_tmp_menu_3, wxT("帮助"));
   SetMenuBar(frame_1_menubar);
 
   frame_1_statusbar = CreateStatusBar(1, 0);
@@ -219,49 +252,112 @@ MainFrame::MainFrame(wxWindow* parent, int id, const wxString& title, const wxPo
   button_osc_start = new wxToggleButton(notebook_1_osc, ID_OSCSTART, wxT("Start"));
 
   /* Spectrum analyzer */
-  label_5 = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("FFT Window Type:"));
-  const wxString choice_fft_choices[] = {wxT("Rect"), wxT("Hanning"), wxT("Blackman"),
-                                         wxT("BlackHarr")};
+  label_5 = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("窗函数"));
+  const wxString choice_fft_choices[] = {wxT("Rect"), wxT("Hann"), wxT("Blackman"),
+                                         wxT("Blackman-Harris")};
   choice_fft = new wxChoice(notebook_1_spe, ID_FFTWINDOW, wxDefaultPosition, wxDefaultSize, 4,
                             choice_fft_choices, 0);
+  const wxString bandwidthChoices[] = {wxT("20 Hz–20 kHz"), wxT("20 Hz–10 kHz"),
+                                       wxT("20 Hz–40 kHz（受采样率限制）")};
+  choice_fft_bandwidth = new wxChoice(notebook_1_spe, wxID_ANY, wxDefaultPosition,
+                                     wxDefaultSize, 3, bandwidthChoices);
+  choice_fft_bandwidth->SetSelection(0);
+  checkbox_fft_a_weighting = new wxCheckBox(notebook_1_spe, wxID_ANY,
+      wxT("积分噪声使用 A 计权（THD+N / SNR 不变）"));
 
-  label_9 = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("Number of samples:"));
-  const wxString choice_fftlength_choices[] = {wxT("128"),   wxT("256"),  wxT("512"),  wxT("1024"),
-                                               wxT("2048"),  wxT("4096"), wxT("8192"), wxT("16384"),
-                                               wxT("32768"), wxT("65536")};
-  choice_fftlength = new wxChoice(notebook_1_spe, ID_XSCALE, wxDefaultPosition, wxDefaultSize, 10,
+  label_9 = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("FFT 点数"));
+  const wxString choice_fftlength_choices[] = {
+      wxT("128"),   wxT("256"),   wxT("512"),   wxT("1024"),  wxT("2048"),
+      wxT("4096"),  wxT("8192"),  wxT("16384"), wxT("32768"), wxT("65536"),
+      wxT("131072"), wxT("262144")};
+  choice_fftlength = new wxChoice(notebook_1_spe, ID_XSCALE, wxDefaultPosition, wxDefaultSize, 12,
                                   choice_fftlength_choices, 0);
 
-  label_rx = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("Freq. Range: [Hz]"));
+  label_rx = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("频率范围 [Hz]"));
   const wxString choice_fftry_choices[] = {wxT("2-2000"), wxT("20-20k"), wxT("10-100k")};
   choice_fftrx = new wxChoice(notebook_1_spe, ID_FFTWINDOW, wxDefaultPosition, wxDefaultSize, 3,
                               choice_fftry_choices, 0);
 
-  label_avg = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("Averaging (N):"));
+  label_avg = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("平均次数"));
   const wxString choice_fftavg_choices[] = {wxT("1"), wxT("2"), wxT("5"), wxT("10"), wxT("20")};
   choice_fftavg = new wxChoice(notebook_1_spe, ID_FFTAVG, wxDefaultPosition, wxDefaultSize, 5,
                                choice_fftavg_choices, 0);
 
-  label_spe_ref = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("Ref Level [dB]"));
+  label_spe_ref = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("参考电平 [dB]"));
   const wxString choice_spe_ref_choices[] = {wxT("0"),   wxT("-10"), wxT("-20"),
                                              wxT("-30"), wxT("-40"), wxT("-50")};
   choice_spe_ref = new wxChoice(notebook_1_spe, ID_FFTREF, wxDefaultPosition, wxDefaultSize, 6,
                                 choice_spe_ref_choices, 0);
 
-  label_spe_dbdiv = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("Amplitude [dB/div]"));
+  label_spe_dbdiv = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("幅度 [dB/div]"));
   const wxString choice_spe_dbdiv_choices[] = {wxT("3"), wxT("5"), wxT("10")};
   choice_spe_dbdiv = new wxChoice(notebook_1_spe, ID_FFTDBDIV, wxDefaultPosition, wxDefaultSize, 3,
                                   choice_spe_dbdiv_choices, 0);
 
   window_1_spe = new CtrlOScope(notebook_1_spe, _T("Hz"), _T("dB"));
-  button_spe_start = new wxToggleButton(notebook_1_spe, ID_SPESTART, wxT("Start"));
+  button_spe_start = new wxToggleButton(notebook_1_spe, ID_SPESTART, wxT("开始 FFT"));
+  checkbox_spe_peak_hold =
+      new wxCheckBox(notebook_1_spe, ID_FFT_PEAK_HOLD, wxT("Peak Hold（保留左右声道峰值）"));
+  button_spe_peak_reset =
+      new wxButton(notebook_1_spe, ID_FFT_PEAK_RESET, wxT("清除峰值"));
+  label_fft_freq_value = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("基波  -- Hz"));
+  label_fft_mag_value = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("幅度  -- dBFS"));
+  checkbox_fft_voltage_confirm = new wxCheckBox(notebook_1_spe, wxID_ANY,
+      wxT("确认输入增益/接线与电压基准一致（仅约 1 kHz 左输入）"));
+  label_thd_value = new wxStaticText(notebook_1_spe, wxID_ANY, wxT("THD  -- %"));
+  label_harmonics_value = new wxStaticText(
+      notebook_1_spe, wxID_ANY,
+      wxT("H2 -- · H3 -- · H4 -- · H5 -- · H6 -- dBc\nH7 -- · H8 -- · H9 -- · H10 -- dBc"));
+  label_thdn_sinad_value = new wxStaticText(
+      notebook_1_spe, wxID_ANY, wxT("THD+N  -- % / -- dB · SINAD  -- dB"));
+  label_snr_noise_value = new wxStaticText(
+      notebook_1_spe, wxID_ANY, wxT("SNR  -- dB · 底噪  -- dBFS/Hz（20 Hz–20 kHz）"));
+  label_integrated_noise = new wxStaticText(notebook_1_spe, wxID_ANY,
+      wxT("积分噪声  -- dBFS（未计权）"));
+
 
   /* Frequency response */
-  label_1_frm = new wxStaticText(notebook_1_frm, wxID_ANY, wxT("Number of points (max 120):"));
-  text_ctrl1_frm = new wxTextCtrl(notebook_1_frm, wxID_ANY, wxT(" 24"));
-  button_frm_start = new wxToggleButton(notebook_1_frm, ID_FRMSTART, wxT("Start"));
+  label_1_frm = new wxStaticText(notebook_1_frm, wxID_ANY, wxT("扫频点数（2–120）"));
+  text_ctrl1_frm = new wxTextCtrl(notebook_1_frm, wxID_ANY, wxT("24"));
+  text_ctrl_frm_start = new wxTextCtrl(notebook_1_frm, wxID_ANY, wxT("20"));
+  text_ctrl_frm_end = new wxTextCtrl(notebook_1_frm, wxID_ANY, wxT("20000"));
+  text_ctrl_frm_level = new wxTextCtrl(notebook_1_frm, wxID_ANY, wxT("-60"));
+  const wxString sweepSpacingChoices[] = {wxT("对数"), wxT("线性")};
+  choice_frm_spacing = new wxChoice(notebook_1_frm, wxID_ANY, wxDefaultPosition,
+                                     wxDefaultSize, 2, sweepSpacingChoices);
+  checkbox_frm_normalize = new wxCheckBox(notebook_1_frm, ID_SWEEP_NORMALIZE,
+                                          wxT("以 1 kHz 归一化（0 dB）"));
+  const wxString sweepChannelChoices[] = {wxT("左右声道"), wxT("左声道"), wxT("右声道")};
+  choice_frm_channel = new wxChoice(notebook_1_frm, ID_SWEEP_CHANNEL, wxDefaultPosition,
+                                    wxDefaultSize, 3, sweepChannelChoices);
+  const wxString sweepOutputChoices[] = {wxT("左输出（通道组第 1 路）"),
+      wxT("右输出（通道组第 2 路）"), wxT("左右同相输出"),
+      wxT("左右反相输出（差分）")};
+  choice_frm_output = new wxChoice(notebook_1_frm, wxID_ANY, wxDefaultPosition,
+                                   wxDefaultSize, 4, sweepOutputChoices);
+  checkbox_frm_correct = new wxCheckBox(notebook_1_frm, ID_SWEEP_CORRECT,
+                                        wxT("按 Loopback 基准补偿"));
+  button_frm_reference = new wxButton(notebook_1_frm, ID_SWEEP_REFERENCE,
+                                      wxT("将当前实测设为 Loopback 基准"));
+  button_frm_auto_reference = new wxButton(notebook_1_frm, ID_SWEEP_AUTO_REFERENCE,
+                                           wxT("一键测量双输出基准"));
+  button_frm_diff_reference = new wxButton(notebook_1_frm, ID_SWEEP_DIFF_REFERENCE,
+                                          wxT("一键测量差分基准（反相）"));
+  button_frm_save_reference = new wxButton(notebook_1_frm, ID_SWEEP_SAVE_REFERENCE,
+                                          wxT("保存基准"));
+  button_frm_load_reference = new wxButton(notebook_1_frm, ID_SWEEP_LOAD_REFERENCE,
+                                          wxT("载入基准"));
+  button_frm_voltage_reference = new wxButton(notebook_1_frm, ID_SWEEP_VOLTAGE_REFERENCE,
+                                              wxT("录入 1 kHz 实测电压"));
+  label_frm_calibration = new wxStaticText(notebook_1_frm, wxID_ANY,
+      wxT("Loopback：尚无基准；需先完成直接回环扫频"));
+  label_frm_summary = new wxStaticText(notebook_1_frm, wxID_ANY,
+                                       wxT("−3 dB 截止点：等待扫频数据"));
+  button_frm_start = new wxToggleButton(notebook_1_frm, ID_FRMSTART, wxT("开始扫频"));
   window_1_frm = new CtrlOScope(notebook_1_frm, _T("Hz"), _T("dB"));
 
+  BuildInstrumentHome();
+  BuildSA440F5Panel();
   set_properties();
   do_layout();
   // end wxGlade
@@ -270,10 +366,10 @@ MainFrame::MainFrame(wxWindow* parent, int id, const wxString& title, const wxPo
 
 void MainFrame::set_properties() {
   // begin wxGlade: MainFrame::set_properties
-  SetTitle(wxT("AUDio MEasurement System"));
+  SetTitle(wxT("AudMeS 测试分析仪"));
   int frame_1_statusbar_widths[] = {-1};
   frame_1_statusbar->SetStatusWidths(1, frame_1_statusbar_widths);
-  frame_1_statusbar->SetStatusText("AUDio MEasurement System - version " AUDMES_VERSION_STRING);
+  frame_1_statusbar->SetStatusText("AudMeS 测试分析仪  ·  FFT / THD / Sweep / SA-440F5");
   choice_l_wav->SetSelection(0);
   choice_r_wav->SetSelection(0);
   choice_osc_swp->SetSelection(6);
@@ -289,8 +385,490 @@ void MainFrame::set_properties() {
   choice_fftavg->SetSelection(0);
   choice_spe_ref->SetSelection(0);
   choice_spe_dbdiv->SetSelection(2);
+  choice_frm_spacing->SetSelection(0);
+  choice_frm_channel->SetSelection(0);
+  choice_frm_output->SetSelection(0);
+  checkbox_frm_correct->SetValue(false);
+  checkbox_frm_correct->Enable(false);
+  button_frm_reference->Enable(false);
+  button_frm_save_reference->Enable(false);
+  checkbox_frm_normalize->SetValue(true);
   // end wxGlade
 }
+
+
+void MainFrame::BuildInstrumentHome() {
+  wxBoxSizer* root = new wxBoxSizer(wxVERTICAL);
+
+  wxStaticText* title =
+      new wxStaticText(notebook_1_home, wxID_ANY, wxT("AudMeS 测试分析仪"));
+  wxFont titleFont = title->GetFont();
+  titleFont.SetPointSize(titleFont.GetPointSize() + 8);
+  titleFont.SetWeight(wxFONTWEIGHT_BOLD);
+  title->SetFont(titleFont);
+  root->Add(title, 0, wxLEFT | wxRIGHT | wxTOP, 24);
+
+  wxStaticText* subtitle = new wxStaticText(
+      notebook_1_home, wxID_ANY,
+      wxT("面向低噪声前置放大器测试 · FFT / THD / Sweep / SA-440F5"));
+  root->Add(subtitle, 0, wxLEFT | wxRIGHT | wxTOP | wxBOTTOM, 24);
+
+  wxStaticBoxSizer* deviceBox =
+      new wxStaticBoxSizer(wxVERTICAL, notebook_1_home, wxT("音频接口"));
+  label_device_status =
+      new wxStaticText(notebook_1_home, wxID_ANY, wxT("正在检测 TOPPING E4x4 Pre…"));
+  wxFont statusFont = label_device_status->GetFont();
+  statusFont.SetPointSize(statusFont.GetPointSize() + 3);
+  statusFont.SetWeight(wxFONTWEIGHT_BOLD);
+  label_device_status->SetFont(statusFont);
+  label_device_detail =
+      new wxStaticText(notebook_1_home, wxID_ANY, wxT("建议 Windows 使用 TOPPING 官方驱动 / ASIO"));
+  button_device_refresh =
+      new wxButton(notebook_1_home, ID_DEVICE_REFRESH, wxT("重新检测设备"));
+
+  deviceBox->Add(label_device_status, 0, wxALL, 10);
+  deviceBox->Add(label_device_detail, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
+  deviceBox->Add(button_device_refresh, 0, wxLEFT | wxRIGHT | wxBOTTOM, 10);
+  root->Add(deviceBox, 0, wxLEFT | wxRIGHT | wxEXPAND, 24);
+
+  wxBoxSizer* statusRow = new wxBoxSizer(wxHORIZONTAL);
+  wxStaticBoxSizer* loopbackBox =
+      new wxStaticBoxSizer(wxVERTICAL, notebook_1_home, wxT("Loopback 校准"));
+  label_loopback_status =
+      new wxStaticText(notebook_1_home, wxID_ANY, wxT("○ 未校准 · 请先完成音频接口直接回环"));
+  loopbackBox->Add(label_loopback_status, 0, wxALL, 10);
+  statusRow->Add(loopbackBox, 1, wxRIGHT | wxEXPAND, 6);
+
+  wxStaticBoxSizer* dutBox =
+      new wxStaticBoxSizer(wxVERTICAL, notebook_1_home, wxT("当前 DUT"));
+  label_current_dut =
+      new wxStaticText(notebook_1_home, wxID_ANY, wxT("SA-440F5 · 尚未开始测试"));
+  dutBox->Add(label_current_dut, 0, wxALL, 10);
+  statusRow->Add(dutBox, 1, wxLEFT | wxEXPAND, 6);
+  root->Add(statusRow, 0, wxLEFT | wxRIGHT | wxTOP | wxEXPAND, 24);
+
+  wxStaticBoxSizer* quickBox =
+      new wxStaticBoxSizer(wxVERTICAL, notebook_1_home, wxT("快速开始"));
+  wxBoxSizer* quickRow = new wxBoxSizer(wxHORIZONTAL);
+  button_home_fft = new wxButton(notebook_1_home, ID_HOME_FFT, wxT("进入 FFT / THD"));
+  button_home_sweep = new wxButton(notebook_1_home, ID_HOME_SWEEP, wxT("进入 Sweep 扫频"));
+  button_home_sa = new wxButton(notebook_1_home, ID_HOME_SA, wxT("进入 SA-440F5 一键测试"));
+  quickRow->Add(button_home_fft, 1, wxRIGHT | wxEXPAND, 6);
+  quickRow->Add(button_home_sweep, 1, wxLEFT | wxRIGHT | wxEXPAND, 6);
+  quickRow->Add(button_home_sa, 1, wxLEFT | wxEXPAND, 6);
+  quickBox->Add(quickRow, 0, wxALL | wxEXPAND, 10);
+  root->Add(quickBox, 0, wxLEFT | wxRIGHT | wxTOP | wxEXPAND, 24);
+
+  wxStaticBoxSizer* latestBox =
+      new wxStaticBoxSizer(wxVERTICAL, notebook_1_home, wxT("最近一次测试摘要"));
+  label_latest_result = new wxStaticText(
+      notebook_1_home, wxID_ANY, wxT("暂无测量结果 · 进入 FFT / THD 并开始采集后自动更新"));
+  latestBox->Add(label_latest_result, 0, wxALL | wxEXPAND, 10);
+  root->Add(latestBox, 0, wxLEFT | wxRIGHT | wxTOP | wxEXPAND, 24);
+
+  wxStaticBoxSizer* workflowBox =
+      new wxStaticBoxSizer(wxVERTICAL, notebook_1_home, wxT("推荐工作流"));
+  label_home_hint = new wxStaticText(
+      notebook_1_home, wxID_ANY,
+      wxT("① FFT / THD：1 kHz 基波、谐波与底噪\n"
+          "② Sweep：20 Hz–40 kHz 音频段幅频响应\n"
+          "③ SA-440F5 一键测试：按接线 → Loopback → 增益 → Sweep → THD → Noise 的顺序执行\n\n"
+          "Generator 与示波器功能仍保留在后台，供 Sweep 和自动测试调用。"));
+  workflowBox->Add(label_home_hint, 1, wxALL | wxEXPAND, 12);
+  root->Add(workflowBox, 1, wxLEFT | wxRIGHT | wxTOP | wxBOTTOM | wxEXPAND, 24);
+
+  notebook_1_home->SetSizer(root);
+}
+
+wxBitmap MainFrame::MakeGuidePlaceholder(const wxString& title, const wxString& subtitle,
+                                         const wxSize& size) {
+  wxBitmap bitmap(size.x, size.y);
+  wxMemoryDC dc(bitmap);
+  dc.SetBackground(wxBrush(wxColour(22, 27, 34)));
+  dc.Clear();
+  dc.SetTextForeground(wxColour(235, 240, 245));
+  dc.SetPen(wxPen(wxColour(70, 155, 210), 2));
+
+  wxRect outer(12, 12, size.x - 24, size.y - 24);
+  dc.SetBrush(wxBrush(wxColour(31, 40, 51)));
+  dc.DrawRoundedRectangle(outer, 10);
+
+  wxFont head = wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT);
+  head.SetPointSize(head.GetPointSize() + 3);
+  head.SetWeight(wxFONTWEIGHT_BOLD);
+  dc.SetFont(head);
+  dc.DrawText(title, 30, 30);
+
+  wxFont body = wxSystemSettings::GetFont(wxSYS_DEFAULT_GUI_FONT);
+  body.SetPointSize(body.GetPointSize() + 1);
+  dc.SetFont(body);
+  dc.DrawText(subtitle, 30, 75);
+
+  const int y = size.y / 2 + 10;
+  const int boxW = (size.x - 120) / 3;
+  wxRect a(30, y, boxW, 70);
+  wxRect b(60 + boxW, y, boxW, 70);
+  wxRect c(90 + boxW * 2, y, boxW, 70);
+  dc.SetBrush(wxBrush(wxColour(42, 55, 69)));
+  dc.DrawRoundedRectangle(a, 8);
+  dc.DrawRoundedRectangle(b, 8);
+  dc.DrawRoundedRectangle(c, 8);
+  const bool directLoopback = title == wxT("Loopback 基准");
+  dc.DrawText(directLoopback ? wxT("耳机输出 1") : wxT("E4x4 Pre"),
+              a.x + 16, a.y + 24);
+  dc.DrawText(directLoopback ? wxT("TRS 直连") : wxT("SA-440F5"),
+              b.x + 16, b.y + 24);
+  dc.DrawText(directLoopback ? wxT("IN3 差分输入") : wxT("FFT / THD"),
+              c.x + 16, c.y + 24);
+  dc.DrawLine(a.GetRight(), a.y + a.height / 2, b.x, b.y + b.height / 2);
+  dc.DrawLine(b.GetRight(), b.y + b.height / 2, c.x, c.y + c.height / 2);
+  dc.SelectObject(wxNullBitmap);
+  return bitmap;
+}
+
+void MainFrame::BuildSA440F5Panel() {
+  m_saStep = 0;
+  m_saStarted = false;
+  wxBoxSizer* root = new wxBoxSizer(wxVERTICAL);
+
+  wxBoxSizer* top = new wxBoxSizer(wxHORIZONTAL);
+  wxStaticText* title =
+      new wxStaticText(notebook_1_sa, wxID_ANY, wxT("SA-440F5 一键测试向导"));
+  wxFont titleFont = title->GetFont();
+  titleFont.SetPointSize(titleFont.GetPointSize() + 6);
+  titleFont.SetWeight(wxFONTWEIGHT_BOLD);
+  title->SetFont(titleFont);
+  button_sa_start = new wxButton(notebook_1_sa, ID_SA_START, wxT("开始测试向导"));
+  button_sa_audio_setup = new wxButton(notebook_1_sa, ID_SA_AUDIO_SETUP, wxT("音频接口设置"));
+  top->Add(title, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, 12);
+  top->Add(button_sa_audio_setup, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 8);
+  top->Add(button_sa_start, 0, wxALIGN_CENTER_VERTICAL);
+  root->Add(top, 0, wxALL | wxEXPAND, 20);
+
+  gauge_sa_progress = new wxGauge(notebook_1_sa, wxID_ANY, 7);
+  root->Add(gauge_sa_progress, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 20);
+
+  wxBoxSizer* main = new wxBoxSizer(wxHORIZONTAL);
+  wxBoxSizer* left = new wxBoxSizer(wxVERTICAL);
+  label_sa_step_counter =
+      new wxStaticText(notebook_1_sa, wxID_ANY, wxT("步骤 1 / 7"));
+  label_sa_step_title =
+      new wxStaticText(notebook_1_sa, wxID_ANY, wxT("设备与安全检查"));
+  wxFont stepFont = label_sa_step_title->GetFont();
+  stepFont.SetPointSize(stepFont.GetPointSize() + 4);
+  stepFont.SetWeight(wxFONTWEIGHT_BOLD);
+  label_sa_step_title->SetFont(stepFont);
+
+  label_sa_step_body =
+      new wxStaticText(notebook_1_sa, wxID_ANY, wxEmptyString, wxDefaultPosition,
+                       wxSize(430, -1), wxST_NO_AUTORESIZE);
+  label_sa_step_body->Wrap(420);
+  left->Add(label_sa_step_counter, 0, wxBOTTOM, 8);
+  left->Add(label_sa_step_title, 0, wxBOTTOM, 12);
+  left->Add(label_sa_step_body, 1, wxEXPAND);
+
+  bitmap_sa_guide =
+      new wxStaticBitmap(notebook_1_sa, wxID_ANY,
+                         MakeGuidePlaceholder(wxT("测试指导"), wxT("等待开始"), wxSize(620, 360)));
+  main->Add(left, 0, wxALL | wxEXPAND, 12);
+  main->Add(bitmap_sa_guide, 1, wxALL | wxEXPAND, 12);
+  root->Add(main, 1, wxLEFT | wxRIGHT | wxEXPAND, 8);
+
+  wxBoxSizer* nav = new wxBoxSizer(wxHORIZONTAL);
+  button_sa_prev = new wxButton(notebook_1_sa, ID_SA_PREV, wxT("上一步"));
+  button_sa_repeat = new wxButton(notebook_1_sa, ID_SA_REPEAT, wxT("重新生成本步引导"));
+  button_sa_baseline_sweep = new wxButton(
+      notebook_1_sa, ID_SA_BASELINE_SWEEP, wxT("去 Sweep 测量或载入差分基准"));
+  button_sa_next = new wxButton(notebook_1_sa, ID_SA_NEXT, wxT("下一步"));
+  nav->Add(button_sa_prev, 0, wxRIGHT, 8);
+  nav->Add(button_sa_repeat, 0, wxRIGHT, 8);
+  nav->Add(button_sa_baseline_sweep, 0, wxRIGHT, 8);
+  nav->AddStretchSpacer(1);
+  nav->Add(button_sa_next, 0);
+  root->Add(nav, 0, wxALL | wxEXPAND, 20);
+
+  notebook_1_sa->SetSizer(root);
+  UpdateSA440F5Step();
+}
+
+void MainFrame::ApplyInstrumentTheme(wxWindow* root) {
+  if (!root) return;
+  const wxColour panel(24, 29, 36);
+  const wxColour text(232, 238, 244);
+  const wxColour accent(63, 169, 225);
+
+  if (dynamic_cast<wxPanel*>(root) || root == this) root->SetBackgroundColour(panel);
+  if (wxStaticBox* box = dynamic_cast<wxStaticBox*>(root)) box->SetForegroundColour(text);
+  if (wxStaticText* st = dynamic_cast<wxStaticText*>(root)) st->SetForegroundColour(text);
+  if (wxCheckBox* cb = dynamic_cast<wxCheckBox*>(root)) cb->SetForegroundColour(text);
+  if (wxButton* bt = dynamic_cast<wxButton*>(root)) {
+    bt->SetForegroundColour(text);
+    bt->SetBackgroundColour(wxColour(42, 52, 64));
+  }
+  if (wxToggleButton* bt = dynamic_cast<wxToggleButton*>(root)) {
+    bt->SetForegroundColour(text);
+    bt->SetBackgroundColour(wxColour(42, 52, 64));
+  }
+  if (wxGauge* gauge = dynamic_cast<wxGauge*>(root)) {
+    gauge->SetForegroundColour(accent);
+  }
+
+  for (wxWindowList::compatibility_iterator node = root->GetChildren().GetFirst(); node;
+       node = node->GetNext()) {
+    ApplyInstrumentTheme(node->GetData());
+  }
+}
+
+void MainFrame::UpdateSA440F5Step() {
+  struct Step {
+    const wxChar* title;
+    const wxChar* body;
+    const wxChar* guide;
+  };
+  static const Step steps[] = {
+      {wxT("设备与安全检查"),
+       wxT("确认 TOPPING E4x4 Pre 已连接并被软件识别。\n"
+           "48 V 幻象电源必须关闭。先不要连接 SA-440F5 输出到高增益输入。\n"
+           "推荐采样率 96 kHz；正式测量前先完成 Loopback 基准。"),
+       wxT("E4x4 Pre → PC，48 V OFF")},
+      {wxT("Loopback 基准"),
+       wxT("保持耳机输出 1 → IN3 的 TRS 直连；48 V 与直接监听须关闭。\n"
+           "在 Sweep 页测量或载入“左右反相差分”基准（至少覆盖 20 Hz–20 kHz）。\n"
+           "当前只校准相对频响；绝对电压、接口 THD 和本底噪声尚未校准。"),
+       wxT("耳机输出 1 → IN3，左右反相")},
+      {wxT("1 kHz 增益"),
+       wxT("E4x4 Pre 输出 → SA-440F5 差分输入，SA-440F5 输出 → E4x4 Pre Line In。\n"
+           "从小信号开始。约 10 mVpp 差分输入的目标须用独立电压测量确认，软件尚不能保证；40 dB 增益时输出约 1 Vpp。\n"
+           "禁止在 SA 输出端额外并 50 Ω 终端，否则会产生约 6 dB 衰减。"),
+       wxT("E4x4 Pre → SA-440F5 → Line In")},
+      {wxT("Sweep 幅频响应"),
+       wxT("使用 Sweep 页面测 20 Hz–40 kHz 音频段响应。\n"
+           "建议 48–96 个点，输入保持小信号，避免任何级过载。\n"
+           "E4x4 Pre 只负责音频段；100 kHz–20 MHz 仍需信号源/示波器/VNA。"),
+       wxT("20 Hz → 40 kHz 扫频")},
+      {wxT("1 kHz THD"),
+       wxT("切到 FFT / THD 页面，使用 Blackman-Harris 或 Hann 窗并增加平均次数。\n"
+           "调节输入使 SA-440F5 输出约 1–2 Vpp，再读取 H2/H3 与 THD。\n"
+           "结果必须高于 Loopback 基线足够多，才可归因于 DUT。"),
+       wxT("1 kHz 基波 + H2/H3")},
+      {wxT("低噪声测量"),
+       wxT("将 SA-440F5 两个输入在 DUT 端短路，避免长线拾取。\n"
+           "Line 输入先做粗测；需要更低噪声时可使用 E4x4 Pre 低噪声话放路径，48 V 必须关闭。\n"
+           "最终按实际增益折算成输入端 nV/√Hz，并用 RSS 去除接口本底。"),
+       wxT("输入短路 → FFT 平均 → RTI")},
+      {wxT("结果复核与报告"),
+       wxT("复核：1 kHz 增益、20 Hz–40 kHz Sweep、THD、Noise Floor。\n"
+           "保存 FFT 与 Sweep CSV；记录 E4x4 Pre 设备名、采样率、Loopback 基线与 SA-440F5 设置。\n"
+           "这一步完成后再进入 20 MHz 带宽、1 MHz CMRR 等高速仪器测试。"),
+       wxT("保存 CSV + 测试条件 + 结论")}};
+  const int count = sizeof(steps) / sizeof(steps[0]);
+  if (m_saStep < 0) m_saStep = 0;
+  if (m_saStep >= count) m_saStep = count - 1;
+
+  label_sa_step_counter->SetLabel(wxString::Format(wxT("步骤 %d / %d"), m_saStep + 1, count));
+  label_sa_step_title->SetLabel(steps[m_saStep].title);
+  if (m_saStarted) {
+    label_current_dut->SetLabel(
+        wxString::Format(wxT("SA-440F5 · 步骤 %d / %d · %s"), m_saStep + 1, count,
+                         steps[m_saStep].title));
+  }
+  wxString stepBody = steps[m_saStep].body;
+  if (m_saStep == 1 && m_saStarted) {
+    stepBody += SADifferentialBaselineReady() ?
+        wxT("\n\n● 差分相对频响基准与当前设备/采样率匹配；仍需确认 DUT 接线和实际电压。") :
+        wxT("\n\n○ 尚无与当前设备/采样率匹配的差分基准，不能进入 DUT 步骤。") ;
+  }
+  label_sa_step_body->SetLabel(stepBody);
+  label_sa_step_body->Wrap(420);
+  gauge_sa_progress->SetValue(m_saStep + 1);
+  button_sa_prev->Enable(m_saStep > 0);
+  button_sa_baseline_sweep->Show(m_saStep == 1);
+  button_sa_next->SetLabel(m_saStep == count - 1 ? wxT("完成") : wxT("下一步"));
+
+  wxFileName exe(wxStandardPaths::Get().GetExecutablePath());
+  const wxString imageName =
+      wxString::Format(wxT("sa440f5_step_%02d.png"), m_saStep + 1);
+  const wxString imagePath = exe.GetPathWithSep() + wxT("guide_assets") +
+                             wxFileName::GetPathSeparator() + imageName;
+  wxBitmap guide;
+  if (wxFileExists(imagePath)) {
+    wxImage image(imagePath);
+    if (image.IsOk()) {
+      image.Rescale(620, 360, wxIMAGE_QUALITY_HIGH);
+      guide = wxBitmap(image);
+    }
+  }
+  if (!guide.IsOk()) {
+    guide = MakeGuidePlaceholder(steps[m_saStep].title, steps[m_saStep].guide, wxSize(620, 360));
+  }
+  bitmap_sa_guide->SetBitmap(guide);
+  notebook_1_sa->Layout();
+}
+
+void MainFrame::AutoDetectE4x4(bool showMessage) {
+  if (!m_RWAudio) return;
+  if (frm_running || button_spe_start->GetValue() || button_gen_start->GetValue() ||
+      button_osc_start->GetValue()) {
+    wxMessageBox(wxT("请先停止测量，再重新检测音频接口。"), wxT("音频接口正在使用"),
+                   wxOK | wxICON_INFORMATION, this);
+    return;
+  }
+  unsigned int rec = 0;
+  unsigned int play = 0;
+  unsigned int rate = 96000;
+  std::string name;
+  const std::vector<std::string> hints = {"E4x4 Pre", "E4x4", "TOPPING"};
+
+  if (m_RWAudio->AutoDetectDevice(hints, &rec, &play, &rate, &name)) {
+    m_e4x4Name = wxString(name.c_str(), wxConvUTF8);
+    const bool exactModel = m_e4x4Name.Lower().Find(wxT("e4x4")) != wxNOT_FOUND;
+    m_e4x4Detected = exactModel;
+    m_RecordDev = rec;
+    m_PlayDev = play;
+    m_SamplingFreq = rate;
+    m_RWAudio->SetSndDevices(rec, play, rate);
+    setoscbuf();
+    m_RWAudio->ChangeBufLen((long int)m_OscBufferLength, (long int)m_SpeBufferLength);
+
+    if (exactModel) {
+      label_device_status->SetLabel(wxT("● 已识别 E4x4 Pre"));
+      label_device_status->SetForegroundColour(wxColour(91, 214, 141));
+      frame_1_statusbar->SetStatusText(
+          wxString::Format(wxT("E4x4 Pre 已连接 · %u Hz · 可开始测试"), m_SamplingFreq));
+    } else {
+      label_device_status->SetLabel(wxT("● 已识别 TOPPING 音频设备（请确认 E4x4 型号）"));
+      label_device_status->SetForegroundColour(wxColour(255, 191, 92));
+      frame_1_statusbar->SetStatusText(
+          wxString::Format(wxT("TOPPING 音频设备已连接 · %u Hz · 型号待确认"), m_SamplingFreq));
+    }
+
+    label_device_detail->SetLabel(wxString::Format(
+        wxT("%s · 输入 #%u · 输出 #%u · %u Hz"), m_e4x4Name.c_str(), m_RecordDev,
+        m_PlayDev, m_SamplingFreq));
+    if (showMessage)
+      wxMessageBox(
+          wxString::Format(wxT("已识别：%s\n采样率：%u Hz\n%s"), m_e4x4Name.c_str(),
+                           m_SamplingFreq,
+                           exactModel ? wxT("型号匹配 E4x4。") : wxT("驱动名称未包含 E4x4，请人工确认型号。")),
+          wxT("TOPPING 音频接口"), wxOK | wxICON_INFORMATION, this);
+  } else {
+    m_e4x4Detected = false;
+    m_e4x4Name = wxEmptyString;
+    label_device_status->SetLabel(wxT("○ 未自动识别 E4x4 Pre"));
+    label_device_status->SetForegroundColour(wxColour(255, 191, 92));
+    label_device_detail->SetLabel(
+        wxT("仍可使用其他声卡；也可点击“音频接口设置”手动选择。"));
+    if (showMessage)
+      wxMessageBox(wxT("未发现名称包含 E4x4 / E4x4 Pre / TOPPING 的双向音频设备。"),
+                   wxT("设备检测"), wxOK | wxICON_WARNING, this);
+  }
+}
+
+void MainFrame::OnSAStart(wxCommandEvent& WXUNUSED(event)) {
+  if (frm_running || button_spe_start->GetValue() || button_gen_start->GetValue() ||
+      button_osc_start->GetValue()) {
+    wxMessageBox(wxT("请先停止正在使用音频接口的测量，再启动一键测试向导。"),
+                 wxT("音频接口正在使用"), wxOK | wxICON_WARNING, this);
+    return;
+  }
+  choice_fft->SetSelection(3);
+  choice_fftlength->SetSelection(9);
+  choice_fftavg->SetSelection(3);
+  choice_fftrx->SetSelection(1);
+  m_SpeBufferLength = 65536;
+  m_SMASpeLeft->SetNumRecords(m_SpeBufferLength >> 1);
+  m_SMASpeRight->SetNumRecords(m_SpeBufferLength >> 1);
+  m_SMASpeLeft->SetNumAverage(10);
+  m_SMASpeRight->SetNumAverage(10);
+  setoscbuf();
+  m_RWAudio->ChangeBufLen((long int)m_OscBufferLength, (long int)m_SpeBufferLength);
+  text_ctrl1_frm->SetValue(wxT("48"));
+  checkbox_gen_sync->SetValue(true);
+  txt_freq_l->SetValue(wxT("1000"));
+  txt_freq_r->SetValue(wxT("1000"));
+  m_saStep = 0;
+  m_saStarted = true;
+  AutoDetectE4x4(false);
+  text_ctrl_frm_end->SetValue(m_SamplingFreq >= 83334 ? wxT("40000") : wxT("20000"));
+  UpdateSA440F5Step();
+}
+
+void MainFrame::OnSAPrev(wxCommandEvent& WXUNUSED(event)) {
+  m_saStarted = true;
+  if (m_saStep > 0) --m_saStep;
+  UpdateSA440F5Step();
+}
+
+void MainFrame::OnSANext(wxCommandEvent& WXUNUSED(event)) {
+  if (m_saStep == 1) {
+    wxString reason;
+    if (!SADifferentialBaselineReady(&reason)) {
+      UpdateSA440F5Step();
+      wxMessageBox(wxT("差分基准未就绪：") + reason +
+                       wxT("\n请在 Sweep 页测量或载入匹配的反相差分基准。"),
+                   wxT("差分基准未就绪"), wxOK | wxICON_WARNING, this);
+      return;
+    }
+    if (wxMessageBox(wxT("差分相对频响基准已匹配，但绝对电压、THD 与噪声尚未校准。进入 DUT 增益步骤前，请确认已停止回环、断开耳机输出 1 → IN3 的直连，并按向导重新接入 SA-440F5；从低电平开始且 48 V 保持关闭。是否已完成重新接线？"),
+                     wxT("确认 DUT 接线"), wxYES_NO | wxICON_WARNING, this) != wxYES)
+      return;
+  }
+  if (m_saStep == 6) {
+    m_saStarted = false;
+    label_current_dut->SetLabel(wxT("SA-440F5 · 引导已结束 · 尚无自动实测结论"));
+    frame_1_statusbar->SetStatusText(wxT("向导已结束；软件未自动判定 DUT，请保存数据并人工复核"));
+    return;
+  }
+  m_saStarted = true;
+  ++m_saStep;
+  UpdateSA440F5Step();
+}
+
+void MainFrame::OnSARepeat(wxCommandEvent& WXUNUSED(event)) { UpdateSA440F5Step(); }
+
+bool MainFrame::SADifferentialBaselineReady(wxString* reason) {
+  auto fail = [&](const wxString& message) {
+    if (reason) *reason = message;
+    return false;
+  };
+  if (!m_RWAudio || !m_loopbackValid)
+    return fail(wxT("尚未测量或载入 Loopback 基准。"));
+  if (m_dualOutputValid || m_loopbackOutputChannel != 3 || m_loopbackCaptureChannel != 0)
+    return fail(wxT("当前是单独输出基准，不是 IN3 左输入的反相差分基准。"));
+  if (frm_running || button_spe_start->GetValue() || button_gen_start->GetValue() ||
+      button_osc_start->GetValue())
+    return fail(wxT("音频接口仍在测量，请先停止。"));
+  if (m_loopbackRecordDev != m_RecordDev || m_loopbackPlayDev != m_PlayDev)
+    return fail(wxT("当前输入/输出设备编号与基准不符。"));
+  std::string recordName, playName;
+  if (!GetSelectedDeviceNames(m_RecordDev, m_PlayDev, &recordName, &playName))
+    return fail(wxT("无法读取当前音频接口。"));
+  if (!DifferentialLoopbackReady(CurrentLoopbackReference(),
+                                 m_RWAudio->GetCurrentApiName(), recordName,
+                                 playName, m_SamplingFreq))
+    return fail(wxT("音频后端、设备名称、采样率或基准频段不匹配。"));
+  if (reason) reason->clear();
+  return true;
+}
+
+void MainFrame::OnSABaselineSweep(wxCommandEvent& WXUNUSED(event)) {
+  notebook_1->SetSelection(2);
+  frame_1_statusbar->SetStatusText(
+      wxT("请测量或载入左右反相差分基准，随后返回 SA-440F5 向导"));
+}
+
+void MainFrame::OnSAAudioSetup(wxCommandEvent& WXUNUSED(event)) {
+  wxCommandEvent dummy;
+  OnSelectSndCard(dummy);
+}
+
+void MainFrame::OnDeviceRefresh(wxCommandEvent& WXUNUSED(event)) { AutoDetectE4x4(true); }
+
+void MainFrame::OnHomeFFT(wxCommandEvent& WXUNUSED(event)) { notebook_1->SetSelection(1); }
+
+void MainFrame::OnHomeSweep(wxCommandEvent& WXUNUSED(event)) { notebook_1->SetSelection(2); }
+
+void MainFrame::OnHomeSA(wxCommandEvent& WXUNUSED(event)) { notebook_1->SetSelection(3); }
 
 void MainFrame::do_layout() {
   // begin wxGlade: MainFrame::do_layout
@@ -320,7 +898,8 @@ void MainFrame::do_layout() {
 
   wxBoxSizer* sizer_9_frm = new wxBoxSizer(wxVERTICAL);
   wxBoxSizer* sizer_10_frm = new wxBoxSizer(wxHORIZONTAL);
-  wxBoxSizer* sizer_17_frm = new wxBoxSizer(wxVERTICAL);
+  wxFlexGridSizer* sizer_17_frm = new wxFlexGridSizer(2, 5, 8);
+  sizer_17_frm->AddGrowableCol(1, 1);
 
   wxBoxSizer* sizer_txtfreql = new wxBoxSizer(wxVERTICAL);
   wxBoxSizer* sizer_txtfreqr = new wxBoxSizer(wxVERTICAL);
@@ -329,6 +908,7 @@ void MainFrame::do_layout() {
   wxFlexGridSizer* sizer_GenR = new wxFlexGridSizer(3, 2, 5, 5);
 
   wxBoxSizer* sizer_spe_ctrl = new wxBoxSizer(wxVERTICAL);
+  wxBoxSizer* sizer_spe_metrics = new wxBoxSizer(wxHORIZONTAL);
   wxBoxSizer* sizer_spe_window = new wxBoxSizer(wxHORIZONTAL);
   wxBoxSizer* sizer_spe_samples = new wxBoxSizer(wxHORIZONTAL);
   wxBoxSizer* sizer_spe_span = new wxBoxSizer(wxHORIZONTAL);
@@ -464,6 +1044,10 @@ void MainFrame::do_layout() {
   sizer_spe_samples->Add(5, 5, 1, 0, 0);
   sizer_spe_samples->Add(choice_fftlength, 0, wxALL, 5);
   sizer_spe_fft->Add(sizer_spe_samples, 1, wxEXPAND, 0);
+  sizer_spe_fft->Add(new wxStaticText(notebook_1_spe, wxID_ANY,
+      wxT("读数积分带宽（非图形缩放）")), 0, wxLEFT | wxRIGHT | wxTOP, 5);
+  sizer_spe_fft->Add(choice_fft_bandwidth, 0, wxALL | wxEXPAND, 5);
+  sizer_spe_fft->Add(checkbox_fft_a_weighting, 0, wxALL, 5);
   sizer_spe_ctrl->Add(sizer_spe_fft, 0, wxALL | wxEXPAND, 5);
 
   sizer_spe_span->Add(label_rx, 0, wxALL | wxALIGN_CENTER_HORIZONTAL | wxALIGN_CENTER_VERTICAL, 5);
@@ -492,21 +1076,75 @@ void MainFrame::do_layout() {
 
   sizer_spe_10->Add(sizer_spe_ctrl, 0, wxEXPAND, 0);
   sizer_spe_9->Add(sizer_spe_10, 1, wxEXPAND, 0);
-  sizer_spe_9->Add(button_spe_start, 0, wxALL | wxALIGN_CENTER_HORIZONTAL | wxALIGN_CENTER_VERTICAL,
-                   5);
+  wxFont metricFont = label_thd_value->GetFont();
+  metricFont.SetPointSize(metricFont.GetPointSize() + 2);
+  metricFont.SetWeight(wxFONTWEIGHT_BOLD);
+  label_fft_freq_value->SetFont(metricFont);
+  label_fft_mag_value->SetFont(metricFont);
+  label_thd_value->SetFont(metricFont);
+  label_harmonics_value->SetFont(metricFont);
+  label_thdn_sinad_value->SetFont(metricFont);
+  label_snr_noise_value->SetFont(metricFont);
+  label_integrated_noise->SetFont(metricFont);
+  sizer_spe_metrics->Add(label_fft_freq_value, 1, wxALL | wxALIGN_CENTER_VERTICAL, 8);
+  sizer_spe_metrics->Add(label_fft_mag_value, 1, wxALL | wxALIGN_CENTER_VERTICAL, 8);
+  sizer_spe_metrics->Add(label_thd_value, 1, wxALL | wxALIGN_CENTER_VERTICAL, 8);
+  sizer_spe_9->Add(sizer_spe_metrics, 0, wxLEFT | wxRIGHT | wxEXPAND, 8);
+  sizer_spe_9->Add(checkbox_fft_voltage_confirm, 0, wxLEFT | wxRIGHT | wxBOTTOM, 8);
+  sizer_spe_9->Add(label_harmonics_value, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 16);
+  sizer_spe_9->Add(label_thdn_sinad_value, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 16);
+  sizer_spe_9->Add(label_snr_noise_value, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 16);
+  sizer_spe_9->Add(label_integrated_noise, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 16);
+  wxBoxSizer* spectrumActions = new wxBoxSizer(wxHORIZONTAL);
+  spectrumActions->Add(checkbox_spe_peak_hold, 0, wxRIGHT | wxALIGN_CENTER_VERTICAL, 12);
+  spectrumActions->Add(button_spe_peak_reset, 0, wxRIGHT | wxALIGN_CENTER_VERTICAL, 12);
+  spectrumActions->Add(button_spe_start, 0, wxALIGN_CENTER_VERTICAL);
+  sizer_spe_9->Add(spectrumActions, 0, wxALL | wxALIGN_CENTER_HORIZONTAL, 8);
   notebook_1_spe->SetAutoLayout(true);
   notebook_1_spe->SetSizer(sizer_spe_9);
   sizer_spe_9->Fit(notebook_1_spe);
   sizer_spe_9->SetSizeHints(notebook_1_spe);
 
   // frequency response
-  sizer_17_frm->Add(label_1_frm, 0, wxALL | wxALIGN_CENTER_HORIZONTAL | wxALIGN_CENTER_VERTICAL, 5);
-  sizer_17_frm->Add(text_ctrl1_frm, 0, wxALL | wxALIGN_CENTER_HORIZONTAL | wxALIGN_CENTER_VERTICAL,
-                    5);
+  sizer_17_frm->Add(new wxStaticText(notebook_1_frm, wxID_ANY, wxT("起始频率 [Hz]")),
+                    0, wxALIGN_CENTER_VERTICAL);
+  sizer_17_frm->Add(text_ctrl_frm_start, 0, wxEXPAND);
+  sizer_17_frm->Add(new wxStaticText(notebook_1_frm, wxID_ANY, wxT("截止频率 [Hz]")),
+                    0, wxALIGN_CENTER_VERTICAL);
+  sizer_17_frm->Add(text_ctrl_frm_end, 0, wxEXPAND);
+  sizer_17_frm->Add(label_1_frm, 0, wxALIGN_CENTER_VERTICAL);
+  sizer_17_frm->Add(text_ctrl1_frm, 0, wxEXPAND);
+  sizer_17_frm->Add(new wxStaticText(notebook_1_frm, wxID_ANY, wxT("扫频方式")),
+                    0, wxALIGN_CENTER_VERTICAL);
+  sizer_17_frm->Add(choice_frm_spacing, 0, wxEXPAND);
+  sizer_17_frm->Add(new wxStaticText(notebook_1_frm, wxID_ANY, wxT("数字激励 [dBFS]")),
+                    0, wxALIGN_CENTER_VERTICAL);
+  sizer_17_frm->Add(text_ctrl_frm_level, 0, wxEXPAND);
   sizer_frm_prop->Add(sizer_17_frm, 0, wxALL | wxEXPAND, 5);
+  sizer_frm_prop->Add(new wxStaticText(
+      notebook_1_frm, wxID_ANY, wxT("实际 DUT 输入电压需经 Loopback 校准")),
+      0, wxALL, 5);
+  sizer_frm_prop->Add(checkbox_frm_normalize, 0, wxALL, 5);
+  sizer_frm_prop->Add(new wxStaticText(notebook_1_frm, wxID_ANY, wxT("显示声道")),
+                       0, wxLEFT | wxRIGHT | wxTOP, 5);
+  sizer_frm_prop->Add(choice_frm_channel, 0, wxALL | wxEXPAND, 5);
+  sizer_frm_prop->Add(new wxStaticText(notebook_1_frm, wxID_ANY, wxT("激励声道")),
+                       0, wxLEFT | wxRIGHT | wxTOP, 5);
+  sizer_frm_prop->Add(choice_frm_output, 0, wxALL | wxEXPAND, 5);
+  sizer_frm_prop->Add(button_frm_auto_reference, 0, wxALL | wxEXPAND, 5);
+  sizer_frm_prop->Add(button_frm_diff_reference, 0, wxALL | wxEXPAND, 5);
+  sizer_frm_prop->Add(button_frm_reference, 0, wxALL | wxEXPAND, 5);
+  wxBoxSizer* referenceFiles = new wxBoxSizer(wxHORIZONTAL);
+  referenceFiles->Add(button_frm_save_reference, 1, wxRIGHT | wxEXPAND, 4);
+  referenceFiles->Add(button_frm_load_reference, 1, wxEXPAND, 0);
+  sizer_frm_prop->Add(referenceFiles, 0, wxALL | wxEXPAND, 5);
+  sizer_frm_prop->Add(button_frm_voltage_reference, 0, wxALL | wxEXPAND, 5);
+  sizer_frm_prop->Add(checkbox_frm_correct, 0, wxALL, 5);
   sizer_10_frm->Add(window_1_frm, 1, wxEXPAND, 0);
   sizer_10_frm->Add(sizer_frm_prop, 0, wxALL | wxEXPAND, 5);
   sizer_9_frm->Add(sizer_10_frm, 1, wxEXPAND, 0);
+  sizer_9_frm->Add(label_frm_calibration, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 8);
+  sizer_9_frm->Add(label_frm_summary, 0, wxLEFT | wxRIGHT | wxBOTTOM | wxEXPAND, 8);
   sizer_9_frm->Add(button_frm_start, 0, wxALL | wxALIGN_CENTER_HORIZONTAL | wxALIGN_CENTER_VERTICAL,
                    5);
   notebook_1_frm->SetAutoLayout(true);
@@ -514,16 +1152,19 @@ void MainFrame::do_layout() {
   sizer_9_frm->Fit(notebook_1_frm);
   sizer_9_frm->SetSizeHints(notebook_1_frm);
 
-  // main notebook
-  notebook_1->AddPage(notebook_1_gen, wxT("Generator"));
-  notebook_1->AddPage(notebook_1_osc, wxT("Oscilloscope"));
-  notebook_1->AddPage(notebook_1_spe, wxT("Spectrum Analyzer"));
-  notebook_1->AddPage(notebook_1_frm, wxT("Frequency Response"));
+  // main notebook - instrument workflow first; generator/scope remain internal helpers.
+  notebook_1->AddPage(notebook_1_home, wxT("仪器总览"));
+  notebook_1->AddPage(notebook_1_spe, wxT("FFT / THD"));
+  notebook_1->AddPage(notebook_1_frm, wxT("Sweep 扫频"));
+  notebook_1->AddPage(notebook_1_sa, wxT("SA-440F5 一键测试"));
+  notebook_1_gen->Hide();
+  notebook_1_osc->Hide();
+  notebook_1->SetSelection(0);
   sizer_notebook->Add(notebook_1, 1, wxEXPAND, 0);
   SetAutoLayout(true);
   SetSizer(sizer_notebook);
-  sizer_notebook->Fit(this);
-  sizer_notebook->SetSizeHints(this);
+  SetMinSize(wxSize(1180, 760));
+  SetSize(wxSize(1280, 820));
   Layout();
   // end wxGlade
 }
@@ -545,6 +1186,8 @@ void MainFrame::set_custom_props() {
   m_PlayDev = 0;
   m_RecordDev = 0;
   m_SamplingFreq = 44100;
+  m_e4x4Detected = false;
+  m_e4x4Name = wxEmptyString;
 
   sweep_div = wxAtoi(choice_osc_swp->GetString(choice_osc_swp->GetSelection()));
   setoscbuf();
@@ -569,10 +1212,23 @@ void MainFrame::set_custom_props() {
   /* freq response */
   window_1_frm->SetXRange(20, 20000, 1);
   window_1_frm->SetYRange(-80, 0, 0);
+  window_1_frm->SetNumOfVerticals(10);
 
   frm_running = 0;
   frm_measure = 0;
   frm_istep = 0;
+  frm_input_gain = 0.0;
+  m_sweepComplete = false;
+  m_autoLoopback = false;
+  m_autoLoopbackPhase = 0;
+  m_dualOutputValid = false;
+  m_sweepLevelDbfs = 0.0;
+  m_sweepLeftPeak = 0.0;
+  m_sweepRightPeak = 0.0;
+  m_sweepRate = 0;
+  m_sweepRecordDev = 0;
+  m_sweepPlayDev = 0;
+  m_loopbackValid = false;
 
   m_configfilename = wxT("");
 
@@ -590,18 +1246,25 @@ void MainFrame::set_custom_props() {
   ret = m_RWAudio->InitSnd((long int)(m_OscBufferLength), m_SpeBufferLength, m_rtinfo,
                            m_SamplingFreq);
 
-  if (ret)
-    wxMessageBox(_T("Sound card issue:\n\nPlease check\nTools -> Audio interface Configuration\n"),
-                 _T("Alert"), wxICON_INFORMATION | wxOK);
+  if (ret) {
+    wxMessageBox(_T("音频接口初始化失败。\n\n请检查：工具 → 音频接口设置"),
+                 _T("音频接口"), wxICON_INFORMATION | wxOK);
+  }
+
+  ApplyInstrumentTheme(this);
+  if (!ret) AutoDetectE4x4(false);
 }
 
 void MainFrame::OnAboutClick(wxCommandEvent& WXUNUSED(event)) {
   wxString s;
-  s << wxT("AUDio MEasurement System - version ") << AUDMES_VERSION_STRING
-    << wxT("\nVaclav Peroutka - vaclavpe@seznam.cz\n\n")
-    << wxT("Project page: https://sourceforge.net/projects/audmes/\n\n") << m_rtinfo;
+  s << wxT("AudMeS 测试分析仪 - ") << AUDMES_VERSION_STRING
+    << wxT("\n\n基于 AudMeS GPLv2 开源项目继续开发。")
+    << wxT("\n原作者：Vaclav Peroutka")
+    << wxT("\n上游：https://sourceforge.net/projects/audmes/")
+    << wxT("\n\n当前重点：FFT / THD / Sweep / E4x4 Pre / SA-440F5")
+    << wxT("\n\n") << m_rtinfo;
 
-  wxMessageBox(s, _T("About application"), wxICON_INFORMATION | wxOK);
+  wxMessageBox(s, _T("关于 AudMeS"), wxICON_INFORMATION | wxOK);
 }
 
 void MainFrame::OnExitClick(wxCommandEvent& WXUNUSED(event)) { Close(); }
@@ -713,6 +1376,13 @@ void MainFrame::OnLoadFRM(wxCommandEvent& WXUNUSED(event)) {
     frm_lgains.Add(gainl);
     frm_rgains.Add(gainr);
   }
+  m_sweepComplete = false;
+  button_frm_reference->Enable(false);
+  if (frm_freqs.GetCount() >= 2 && frm_freqs[0] > 0.0 &&
+      frm_freqs[frm_freqs.GetCount() - 1] > frm_freqs[0]) {
+    window_1_frm->SetXRange(frm_freqs[0], frm_freqs[frm_freqs.GetCount() - 1],
+                            choice_frm_spacing->GetSelection() == 0 ? 1 : 0);
+  }
   DrawFreqResponse();
   Refresh();
 }
@@ -757,27 +1427,35 @@ void MainFrame::OnSincClick(wxCommandEvent& WXUNUSED(event)) {
   Refresh();
 }
 
-static const int frm_low = 20;
-
 void MainFrame::CalcFreqResponse() {
-  /* periodically called by OnTimer
-   * delays for measuring work by waiting for the next call
-   */
-  if (frm_istep <= (int)frm_ipoints) {
-    float freq = frm_low * pow(10.0, 3.0 * frm_istep / frm_ipoints);
+  // Advance on completed capture records, not elapsed UI timer ticks.
+  if (frm_istep < frm_ipoints) {
+    const double freq = frm_plan[frm_istep];
 
     if (0 == frm_measure) {
       // play new frequency e.g. from 20Hz to 20kHz
       m_RWAudio->PlaySetGenerator(freq, freq, RWAudio::SINE, RWAudio::SINE,
-                                  pow(10, slide_l_am->GetValue() / 20.0),
-                                  pow(10, slide_r_am->GetValue() / 20.0));
+                                  frm_output_channel == 1 ? 0.0 : frm_input_gain,
+                                  frm_output_channel == 0 ? 0.0 :
+                                      frm_output_channel == 3 ? -frm_input_gain : frm_input_gain);
+      // Synchronize both oscillator phases; a negative right gain makes L-R excitation.
+      m_RWAudio->PlaySetPhaseDiff(0.0f);
       wxString bla;
       bla.Printf(wxT("Frequency : %.1f "), freq);
       window_1_frm->ShowUserText(bla, 100, 20);
+      g_SpeBufferChanged.store(false);
+      frm_measure = 1;
+      return;
     }
-    if (1 == frm_measure) g_SpeBufferChanged.store(false);  // now get audio data
-
-    if (g_SpeBufferChanged.load() && frm_measure > 1) {
+    if (!g_SpeBufferChanged.load()) return;
+    if (frm_measure < 3) {
+      // The first record can contain old/partial FFT data and stream latency.
+      // Discard it and one full settling record before measuring this tone.
+      ++frm_measure;
+      g_SpeBufferChanged.store(false);
+      return;
+    }
+    {
       // new audio data has arrived
       double l_rms = 0;
       double r_rms = 0;
@@ -785,38 +1463,610 @@ void MainFrame::CalcFreqResponse() {
       for (unsigned long int ii = 0; ii < m_SpeBufferLength; ii++) {
         l_rms += g_SpeBuffer_Left[ii] * g_SpeBuffer_Left[ii];
         r_rms += g_SpeBuffer_Right[ii] * g_SpeBuffer_Right[ii];
+        m_sweepLeftPeak = std::max(m_sweepLeftPeak,
+                                   static_cast<double>(std::fabs(g_SpeBuffer_Left[ii])));
+        m_sweepRightPeak = std::max(m_sweepRightPeak,
+                                    static_cast<double>(std::fabs(g_SpeBuffer_Right[ii])));
+      }
+      if (m_autoLoopback && m_sweepLeftPeak >= 0.98) {
+        frm_running = false;
+        m_autoLoopback = false;
+        m_autoLoopbackPhase = 0;
+        button_frm_start->SetValue(false);
+        button_frm_start->SetLabel(wxT("开始扫频"));
+        button_frm_auto_reference->Enable(true);
+        button_frm_diff_reference->Enable(true);
+        m_RWAudio->StopSnd();
+        SendGenSettings();
+        frame_1_statusbar->SetStatusText(wxT("输入峰值接近满幅，已停止基准测量"));
+        wxMessageBox(wxT("IN3 输入峰值接近满幅，测量已自动停止。请降低耳机输出音量或 IN3 增益后重测。"),
+                     wxT("输入削顶风险"), wxOK | wxICON_WARNING, this);
+        return;
       }
       frm_freqs.Add(freq);
       frm_lgains.Add(sqrt(l_rms / m_SpeBufferLength));
       frm_rgains.Add(sqrt(r_rms / m_SpeBufferLength));
-      frm_measure = -1;  // zero after increment
+      frm_measure = 0;
       frm_istep++;
+      if (m_autoLoopback)
+        frame_1_statusbar->SetStatusText(wxString::Format(
+            wxT("Loopback 基准测量 %d/%d · %.0f Hz"), frm_istep, frm_ipoints, freq));
     }
-    frm_measure++;
   } else {
+    const bool autoLoopback = m_autoLoopback;
+    const int autoPhase = m_autoLoopbackPhase;
+    m_autoLoopback = false;
     frm_running = false;
+    m_sweepComplete = true;
+    button_frm_reference->Enable(true);
     window_1_frm->ShowUserText(wxString(""), 0, 0);
     button_frm_start->SetValue(false);
-    button_frm_start->SetLabel(_T("Start"));
+    button_frm_start->SetLabel(_T("开始扫频"));
     m_RWAudio->StopSnd();
     SendGenSettings();  // stop generator
+    frame_1_statusbar->SetStatusText(
+        wxString::Format(wxT("扫频完成 · 共 %d 个测量点"), frm_ipoints));
+    if (autoLoopback && CaptureLoopback(false)) {
+      if (autoPhase == 0) {
+        m_dualOutput[0] = CurrentLoopbackReference();
+        m_autoLoopbackPhase = 1;
+        choice_frm_output->SetSelection(1);
+        m_autoLoopback = true;
+        button_frm_start->SetValue(true);
+        wxCommandEvent startEvent(wxEVT_TOGGLEBUTTON, ID_FRMSTART);
+        OnFrmStart(startEvent);
+        if (frm_running) {
+          frame_1_statusbar->SetStatusText(wxT("左输出基准已测得 · 正在测量右输出"));
+          return;
+        }
+        m_autoLoopback = false;
+      } else if (autoPhase == 1) {
+        m_dualOutput[1] = CurrentLoopbackReference();
+        std::string error;
+        if (ValidateDualOutputReferences(m_dualOutput[0], m_dualOutput[1], &error)) {
+          m_dualOutputValid = true;
+          DualOutputBalance balance;
+          AnalyzeDualOutputBalance(m_dualOutput[0], m_dualOutput[1], &balance, &error);
+          label_loopback_status->SetLabel(wxString::Format(
+              wxT("● 双输出基准已记录 · 同一 IN3 回环 · 1 kHz 左−右 %+.3f dB"),
+              balance.leftMinusRightDbAt1k));
+          notebook_1_home->Layout();
+          DrawFreqResponse();
+          frame_1_statusbar->SetStatusText(
+              wxT("左/右输出基准已记录 · 点击“保存基准”可留存"));
+        } else {
+          frame_1_statusbar->SetStatusText(wxT("双输出基准条件不一致 · 请重新测量"));
+        }
+      } else {
+        m_dualOutputValid = false;
+        DrawFreqResponse();
+        frame_1_statusbar->SetStatusText(
+            wxT("反相差分基准已记录 · 点击“保存基准”单独留存"));
+      }
+    } else if (autoLoopback) {
+      frame_1_statusbar->SetStatusText(wxT("回环信号无效 · 未建立双输出基准"));
+    }
+    m_autoLoopbackPhase = 0;
+    button_frm_auto_reference->Enable(true);
+    button_frm_diff_reference->Enable(true);
   }
 }
 
 void MainFrame::DrawFreqResponse(void) {
-  wxArrayDouble left, right;
-  double tmpval;
-  left.Clear();
-  right.Clear();
-  for (unsigned int i = 0; i < frm_freqs.size(); i++) {
-    tmpval = frm_lgains[i];
-    left.Add(20.0 * log10(tmpval));
-    tmpval = frm_rgains[i];
-    right.Add(20.0 * log10(tmpval));
+  std::vector<double> frequencies, leftRms, rightRms;
+  for (size_t i = 0; i < frm_freqs.GetCount(); ++i) {
+    frequencies.push_back(frm_freqs[i]);
+    leftRms.push_back(frm_lgains[i]);
+    rightRms.push_back(frm_rgains[i]);
   }
-  window_1_frm->SetTrack1(left);
-  window_1_frm->SetTrack2(right);
+  bool corrected = false;
+  const LoopbackReference* activeDual = m_dualOutputValid &&
+      frm_output_channel >= 0 && frm_output_channel < 2 ?
+      &m_dualOutput[frm_output_channel] : nullptr;
+  const int captureChannel = activeDual ? activeDual->captureChannel : m_loopbackCaptureChannel;
+  if (checkbox_frm_correct->GetValue() && m_sweepComplete && CurrentSweepMatchesLoopback()) {
+    std::vector<double>& selected = captureChannel == 0 ? leftRms : rightRms;
+    const std::vector<double> compensated = CorrectSweepRms(
+        frequencies, selected,
+        activeDual ? activeDual->frequencies : m_loopbackFrequencies,
+        activeDual ? activeDual->rms : m_loopbackRms);
+    if (!compensated.empty()) {
+      selected = compensated;
+      corrected = true;
+    }
+  }
+  const SweepAnalysis leftResult = AnalyzeSweepChannel(frequencies, leftRms);
+  const SweepAnalysis rightResult = AnalyzeSweepChannel(frequencies, rightRms);
+  const bool normalized = checkbox_frm_normalize->GetValue();
+  wxArrayDouble left, right;
+  for (size_t i = 0; i < frequencies.size(); ++i) {
+    if (i < leftResult.levelsDb.size())
+      left.Add(leftResult.levelsDb[i] -
+               (normalized && leftResult.hasReference ? leftResult.referenceDb : 0.0));
+    if (i < rightResult.levelsDb.size())
+      right.Add(rightResult.levelsDb[i] -
+                (normalized && rightResult.hasReference ? rightResult.referenceDb : 0.0));
+  }
+  const int channel = corrected ? captureChannel + 1 :
+      choice_frm_channel->GetSelection();
+  window_1_frm->SetTrack1(channel == 2 ? wxArrayDouble() : left);
+  window_1_frm->SetTrack2(channel == 1 ? wxArrayDouble() : right);
   window_1_frm->SetTrackX(frm_freqs);
+  const bool normalizedScale = normalized &&
+      (channel == 1 ? leftResult.hasReference :
+       channel == 2 ? rightResult.hasReference :
+                      leftResult.hasReference && rightResult.hasReference);
+  window_1_frm->SetYRange(normalizedScale ? -40.0 : corrected ? -40.0 : -80.0,
+                          normalized ? 10.0 : corrected ? 60.0 : 0.0, 0);
+
+  std::vector<CtrlOScope::Marker> markers;
+  wxString summary;
+  const SweepAnalysis results[] = {leftResult, rightResult};
+  const wxString names[] = {wxT("左"), wxT("右")};
+  const wxColour colors[] = {wxColour(255, 210, 70), wxColour(72, 215, 255)};
+  for (int c = 0; c < 2; ++c) {
+    if ((c == 0 && channel == 2) || (c == 1 && channel == 1)) continue;
+    const SweepAnalysis& result = results[c];
+    if (!summary.empty()) summary += wxT("   |   ");
+    if (!result.hasReference) {
+      summary += names[c] + wxT("：1 kHz 无有效数据，无法归一化或计算 −3 dB");
+      continue;
+    }
+    const wxString low = result.hasLowCutoff ?
+        wxString::Format(wxT("%.0f Hz"), result.lowCutoffHz) : wxT("范围内未见");
+    const wxString high = result.hasHighCutoff ?
+        wxString::Format(wxT("%.0f Hz"), result.highCutoffHz) : wxT("范围内未见");
+    summary += names[c] + wxT("：−3 dB 低端 ") + low + wxT("；高端 ") + high;
+    const SweepRipple ripple = AnalyzeSweepRipple(frequencies, c == 0 ? leftRms : rightRms);
+    summary += ripple.valid ? wxString::Format(
+        wxT("；20 Hz–20 kHz 采样峰峰差 %.3f dB%s"), ripple.peakToPeakDb,
+        corrected && c == captureChannel ? wxT("（回环补偿）") : wxT("（原始）")) :
+        wxString(wxT("；峰峰差 --（频段未覆盖或数据无效）"));
+    if (result.hasLowCutoff)
+      markers.push_back({result.lowCutoffHz, names[c] + wxT(" −3 dB"), colors[c]});
+    if (result.hasHighCutoff)
+      markers.push_back({result.highCutoffHz, names[c] + wxT(" −3 dB"), colors[c]});
+  }
+  window_1_frm->SetMarkers(markers);
+  label_frm_summary->SetLabel(summary.empty() ? wxT("−3 dB 截止点：等待扫频数据") : summary);
+  wxString calibrationStatus = wxT("Loopback：尚无基准；需先完成直接回环扫频");
+  if (m_dualOutputValid) {
+    calibrationStatus = wxString::Format(
+        wxT("双输出 Loopback：左/右输出分别测量 · 同一 IN3 · %u Hz · %.0f dBFS"),
+        m_dualOutput[0].sampleRate, m_dualOutput[0].levelDbfs);
+    if (checkbox_frm_correct->GetValue())
+      calibrationStatus += corrected ? wxT(" · 当前输出已补偿") : wxT(" · 当前曲线未补偿");
+    DualOutputBalance balance;
+    std::string balanceError;
+    if (AnalyzeDualOutputBalance(m_dualOutput[0], m_dualOutput[1],
+                                 &balance, &balanceError))
+      calibrationStatus += wxString::Format(
+          wxT(" · 同一 IN3 回环：1 kHz 左−右 %+.3f dB；最大差 %.3f dB @ %.0f Hz（非绝对电压）"),
+          balance.leftMinusRightDbAt1k, balance.maxAbsDifferenceDb,
+          balance.maxDifferenceHz);
+  } else if (m_loopbackValid) {
+    calibrationStatus = wxString::Format(wxT("Loopback 基准：%s输入%s · %u Hz · %.0f dBFS · %s"),
+        m_loopbackCaptureChannel == 0 ? wxT("左") : wxT("右"),
+        m_loopbackOutputChannel == 3 ? wxT(" · 左右反相差分") : wxT(""), m_loopbackRate,
+        m_loopbackLevelDbfs, m_loopbackAt.c_str());
+    if (checkbox_frm_correct->GetValue()) {
+      calibrationStatus += corrected ? wxT(" · 已补偿当前曲线（相对 dB）") :
+          wxT(" · 当前曲线未补偿：等待完成或频段超出基准");
+    } else if (m_sweepComplete && !CurrentSweepMatchesLoopback()) {
+      calibrationStatus += wxT(" · 测量条件不符，显示原始曲线");
+    }
+  }
+  const int voltageOutput = choice_frm_output->GetSelection();
+  const LoopbackReference voltageReference = m_dualOutputValid && voltageOutput >= 0 &&
+      voltageOutput < 2 ? m_dualOutput[voltageOutput] : CurrentLoopbackReference();
+  calibrationStatus += voltageReference.measuredVrmsAt1k > 0.0 ? wxString::Format(
+      wxT("\n1 kHz 外部电压基准：%.6f Vrms · 仅原接线/增益/音量有效；需人工复核"),
+      voltageReference.measuredVrmsAt1k) :
+      wxT("\n1 kHz 真实电压：未校准（需要外部仪表测量）");
+  if (label_frm_calibration->GetLabel() != calibrationStatus)
+    label_frm_calibration->SetLabel(calibrationStatus);
+  window_1_frm->Refresh();
+}
+
+bool MainFrame::CurrentSweepMatchesLoopback() const {
+  if (m_dualOutputValid && frm_output_channel >= 0 && frm_output_channel < 2) {
+    const LoopbackReference& reference = m_dualOutput[frm_output_channel];
+    return m_SamplingFreq == reference.sampleRate &&
+        m_RecordDev == m_loopbackRecordDev && m_PlayDev == m_loopbackPlayDev &&
+        std::fabs(m_sweepLevelDbfs - reference.levelDbfs) < 1e-6;
+  }
+  return m_loopbackValid && m_SamplingFreq == m_loopbackRate &&
+      m_RecordDev == m_loopbackRecordDev && m_PlayDev == m_loopbackPlayDev &&
+      frm_output_channel == m_loopbackOutputChannel &&
+      std::fabs(m_sweepLevelDbfs - m_loopbackLevelDbfs) < 1e-6;
+}
+
+bool MainFrame::GetSelectedDeviceNames(unsigned int recordId, unsigned int playId,
+                                       std::string* recordName, std::string* playName) {
+  RWAudioDevList outputs, inputs;
+  if (m_RWAudio->GetRWAudioDevices(&outputs, &inputs) != 0) return false;
+  recordName->clear();
+  playName->clear();
+  for (size_t i = 0; i < inputs.card_pos.size(); ++i)
+    if (inputs.card_pos[i] == recordId) *recordName = inputs.card_info[i].name;
+  for (size_t i = 0; i < outputs.card_pos.size(); ++i)
+    if (outputs.card_pos[i] == playId) *playName = outputs.card_info[i].name;
+  return !recordName->empty() && !playName->empty();
+}
+
+LoopbackReference MainFrame::CurrentLoopbackReference() const {
+  LoopbackReference reference;
+  reference.api = m_loopbackApiName;
+  reference.recordDevice = m_loopbackRecordName;
+  reference.playDevice = m_loopbackPlayName;
+  reference.capturedAt = std::string(m_loopbackAt.utf8_str().data());
+  reference.sampleRate = m_loopbackRate;
+  reference.outputChannel = m_loopbackOutputChannel;
+  reference.captureChannel = m_loopbackCaptureChannel;
+  reference.levelDbfs = m_loopbackLevelDbfs;
+  reference.measuredVrmsAt1k = m_loopbackMeasuredVrms;
+  reference.frequencies = m_loopbackFrequencies;
+  reference.rms = m_loopbackRms;
+  return reference;
+}
+
+bool MainFrame::CaptureLoopback(bool confirmWiring) {
+  if (frm_running || button_spe_start->GetValue() || button_gen_start->GetValue() ||
+      button_osc_start->GetValue() || !m_sweepComplete || frm_freqs.GetCount() < 2) return false;
+  std::vector<double> frequencies, left, right;
+  for (size_t i = 0; i < frm_freqs.GetCount(); ++i) {
+    frequencies.push_back(frm_freqs[i]);
+    left.push_back(frm_lgains[i]);
+    right.push_back(frm_rgains[i]);
+  }
+  const SweepAnalysis leftAnalysis = AnalyzeSweepChannel(frequencies, left);
+  const SweepAnalysis rightAnalysis = AnalyzeSweepChannel(frequencies, right);
+  int channel = choice_frm_channel->GetSelection() - 1;
+  if (channel < 0) {
+    if (leftAnalysis.hasReference && rightAnalysis.hasReference &&
+        leftAnalysis.referenceDb > rightAnalysis.referenceDb + 14.0) channel = 0;
+    else if (leftAnalysis.hasReference && rightAnalysis.hasReference &&
+             rightAnalysis.referenceDb > leftAnalysis.referenceDb + 14.0) channel = 1;
+  }
+  const SweepAnalysis& selectedAnalysis = channel == 1 ? rightAnalysis : leftAnalysis;
+  if (channel < 0 || !selectedAnalysis.hasReference || selectedAnalysis.referenceDb < -100.0) {
+    wxMessageBox(wxT("无法确认有信号的回环输入。请选择“左声道”或“右声道”，"
+                     "并确认 1 kHz 回传高于底噪后再保存基准。"),
+                 wxT("Loopback 基准无效"), wxOK | wxICON_WARNING, this);
+    return false;
+  }
+  if ((channel == 0 ? m_sweepLeftPeak : m_sweepRightPeak) >= 0.98) {
+    wxMessageBox(wxT("本次扫频输入峰值接近满幅，不能作为基准。请降低耳机音量或 IN3 增益后重测。"),
+                 wxT("Loopback 基准无效"), wxOK | wxICON_WARNING, this);
+    return false;
+  }
+  std::string recordName, playName, error;
+  if (!GetSelectedDeviceNames(m_sweepRecordDev, m_sweepPlayDev, &recordName, &playName)) {
+    wxMessageBox(wxT("找不到本次扫频所用的音频接口，请重新检测设备并测量。"),
+                 wxT("Loopback 基准无效"), wxOK | wxICON_WARNING, this);
+    return false;
+  }
+  LoopbackReference reference;
+  reference.api = m_RWAudio->GetCurrentApiName();
+  reference.recordDevice = recordName;
+  reference.playDevice = playName;
+  reference.capturedAt = std::string(wxDateTime::Now().FormatISOCombined(' ').utf8_str().data());
+  reference.sampleRate = m_sweepRate;
+  reference.outputChannel = frm_output_channel;
+  reference.captureChannel = channel;
+  reference.levelDbfs = m_sweepLevelDbfs;
+  reference.frequencies = frequencies;
+  reference.rms = channel == 0 ? left : right;
+  if (!ValidateLoopbackReference(reference, &error)) {
+    wxMessageBox(wxT("当前扫频数据不能作为基准：") + wxString::FromUTF8(error.c_str()),
+                 wxT("Loopback 基准无效"), wxOK | wxICON_WARNING, this);
+    return false;
+  }
+  if (confirmWiring && wxMessageBox(wxT("请确认当前是音频接口直接回环接线，未经过 SA-440F5。\n"
+                       "基准将记录当前输入、输出、采样率和数字激励电平，可随后保存到文件。"),
+                   wxT("记录 Loopback 基准"), wxYES_NO | wxICON_QUESTION, this) != wxYES) return false;
+
+  m_loopbackFrequencies = reference.frequencies;
+  m_loopbackRms = reference.rms;
+  m_loopbackCaptureChannel = channel;
+  m_loopbackOutputChannel = frm_output_channel;
+  m_loopbackRate = m_sweepRate;
+  m_loopbackRecordDev = m_sweepRecordDev;
+  m_loopbackPlayDev = m_sweepPlayDev;
+  m_loopbackLevelDbfs = m_sweepLevelDbfs;
+  m_loopbackMeasuredVrms = 0.0;
+  checkbox_fft_voltage_confirm->SetValue(false);
+  m_loopbackAt = wxString::FromUTF8(reference.capturedAt.c_str());
+  m_loopbackApiName = reference.api;
+  m_loopbackRecordName = reference.recordDevice;
+  m_loopbackPlayName = reference.playDevice;
+  m_loopbackValid = true;
+  checkbox_frm_correct->Enable(true);
+  button_frm_save_reference->Enable(true);
+  label_loopback_status->SetLabel(wxString::Format(
+      wxT("● 本次会话已记录%s输入%s基准 · %u Hz · %.0f dBFS"),
+      channel == 0 ? wxT("左") : wxT("右"),
+      frm_output_channel == 3 ? wxT("反相差分") : wxT(""),
+      m_loopbackRate, m_loopbackLevelDbfs));
+  notebook_1_home->Layout();
+  DrawFreqResponse();
+  if (m_saStarted && m_saStep == 1) UpdateSA440F5Step();
+  return true;
+}
+
+void MainFrame::OnCaptureLoopback(wxCommandEvent& WXUNUSED(event)) {
+  if (CaptureLoopback(true)) {
+    m_dualOutputValid = false;
+    DrawFreqResponse();
+  }
+}
+
+void MainFrame::OnAutoLoopback(wxCommandEvent& WXUNUSED(event)) {
+  if (frm_running || button_spe_start->GetValue() || button_gen_start->GetValue() ||
+      button_osc_start->GetValue()) {
+    wxMessageBox(wxT("请先停止其他测量，再开始 Loopback 基准测量。"),
+                 wxT("音频接口正在使用"), wxOK | wxICON_WARNING, this);
+    return;
+  }
+  std::string recordName, playName;
+  if (!GetSelectedDeviceNames(m_RecordDev, m_PlayDev, &recordName, &playName) ||
+      m_RWAudio->GetCurrentApiName() != "wasapi" ||
+      recordName.find("E4x4") == std::string::npos ||
+      recordName.find("Analog 3/4") == std::string::npos ||
+      playName.find("E4x4") == std::string::npos ||
+      playName.find("Playback 1/2") == std::string::npos ||
+      m_SamplingFreq < 44100) {
+    wxMessageBox(wxT("一键基准只支持已验证的 E4x4 Pre 路由：WASAPI Playback 1/2 输出和 Analog 3/4 输入，采样率至少 44.1 kHz。请在“音频接口设置”中检查。"),
+                 wxT("音频接口不匹配"), wxOK | wxICON_WARNING, this);
+    return;
+  }
+  if (wxMessageBox(wxT("请确认 E4x4 Pre 前面板立体声耳机输出 1 通过 TRS 线直接接到模拟 IN 3，未经过被测设备；48 V 幻象电源和直接监听已关闭，输出音量及输入增益已调至安全位置。\n\n将依次单独激励左、右输出，各以 20 Hz–20 kHz、24 点、−40 dBFS 测量同一个 IN3。所得是当前接线下的两路输出相对频响，不是两个独立输入或绝对电压校准。完成后需手动保存文件。"),
+                   wxT("确认直接回环接线"), wxYES_NO | wxICON_QUESTION, this) != wxYES) return;
+  text_ctrl_frm_start->SetValue(wxT("20"));
+  text_ctrl_frm_end->SetValue(wxT("20000"));
+  text_ctrl1_frm->SetValue(wxT("24"));
+  text_ctrl_frm_level->SetValue(wxT("-40"));
+  choice_frm_spacing->SetSelection(0);
+  choice_frm_channel->SetSelection(1);
+  choice_frm_output->SetSelection(0);
+  checkbox_frm_correct->SetValue(false);
+  choice_frm_channel->Enable(true);
+  m_dualOutputValid = false;
+  m_autoLoopback = true;
+  m_autoLoopbackPhase = 0;
+  button_frm_auto_reference->Enable(false);
+  button_frm_diff_reference->Enable(false);
+  button_frm_start->SetValue(true);
+  wxCommandEvent startEvent(wxEVT_TOGGLEBUTTON, ID_FRMSTART);
+  OnFrmStart(startEvent);
+  if (!frm_running) {
+    m_autoLoopback = false;
+    m_autoLoopbackPhase = 0;
+    button_frm_auto_reference->Enable(true);
+    button_frm_diff_reference->Enable(true);
+  }
+}
+
+void MainFrame::OnAutoDifferentialLoopback(wxCommandEvent& WXUNUSED(event)) {
+  if (frm_running || button_spe_start->GetValue() || button_gen_start->GetValue() ||
+      button_osc_start->GetValue()) {
+    wxMessageBox(wxT("请先停止其他测量，再开始差分基准测量。"),
+                 wxT("音频接口正在使用"), wxOK | wxICON_WARNING, this);
+    return;
+  }
+  std::string recordName, playName;
+  if (!GetSelectedDeviceNames(m_RecordDev, m_PlayDev, &recordName, &playName) ||
+      m_RWAudio->GetCurrentApiName() != "wasapi" ||
+      recordName.find("E4x4") == std::string::npos ||
+      recordName.find("Analog 3/4") == std::string::npos ||
+      playName.find("E4x4") == std::string::npos ||
+      playName.find("Playback 1/2") == std::string::npos ||
+      m_SamplingFreq < 44100) {
+    wxMessageBox(wxT("差分基准只支持当前已验证的 E4x4 Pre WASAPI Playback 1/2 → Analog 3/4 路由，采样率至少 44.1 kHz。"),
+                 wxT("音频接口不匹配"), wxOK | wxICON_WARNING, this);
+    return;
+  }
+  if (wxMessageBox(wxT("请确认前耳机输出 1 仍以一根 TRS 线直接连接 IN3、未经过被测设备；48 V 和直接监听均已关闭，输出音量及输入增益处于安全位置。\n\n软件会令左、右输出等幅反相，各为 −40 dBFS，以 20 Hz–20 kHz、24 点测量同一 IN3。差分回传可能比单路高约 6 dB；若输入削顶请立即停止。此基准须单独保存，不能代替单路或绝对电压校准。"),
+                   wxT("确认差分回环接线"), wxYES_NO | wxICON_QUESTION, this) != wxYES) return;
+  text_ctrl_frm_start->SetValue(wxT("20"));
+  text_ctrl_frm_end->SetValue(wxT("20000"));
+  text_ctrl1_frm->SetValue(wxT("24"));
+  text_ctrl_frm_level->SetValue(wxT("-40"));
+  choice_frm_spacing->SetSelection(0);
+  choice_frm_channel->SetSelection(1);
+  choice_frm_output->SetSelection(3);
+  checkbox_frm_correct->SetValue(false);
+  choice_frm_channel->Enable(true);
+  m_dualOutputValid = false;
+  m_autoLoopback = true;
+  m_autoLoopbackPhase = 2;
+  button_frm_auto_reference->Enable(false);
+  button_frm_diff_reference->Enable(false);
+  button_frm_start->SetValue(true);
+  wxCommandEvent startEvent(wxEVT_TOGGLEBUTTON, ID_FRMSTART);
+  OnFrmStart(startEvent);
+  if (!frm_running) {
+    m_autoLoopback = false;
+    m_autoLoopbackPhase = 0;
+    button_frm_auto_reference->Enable(true);
+    button_frm_diff_reference->Enable(true);
+  }
+}
+
+void MainFrame::OnSaveLoopback(wxCommandEvent& WXUNUSED(event)) {
+  if (!m_loopbackValid && !m_dualOutputValid) return;
+  std::string contents, error;
+  const bool serialized = m_dualOutputValid ?
+      SerializeDualOutputReferences(m_dualOutput[0], m_dualOutput[1], &contents, &error) :
+      SerializeLoopbackReference(CurrentLoopbackReference(), &contents, &error);
+  if (!serialized) {
+    wxMessageBox(wxT("基准数据无效：") + wxString::FromUTF8(error.c_str()),
+                 wxT("保存失败"), wxOK | wxICON_ERROR, this);
+    return;
+  }
+  wxFileDialog dialog(this, wxT("保存 Loopback 基准"), wxEmptyString,
+      m_dualOutputValid ? wxT("E4x4-dual-output.audmes-loopback") :
+          m_loopbackOutputChannel == 3 ? wxT("E4x4-differential.audmes-loopback") :
+                                           wxT("E4x4-loopback.audmes-loopback"),
+      wxT("AudMeS Loopback (*.audmes-loopback)|*.audmes-loopback"),
+      wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+  if (dialog.ShowModal() != wxID_OK) return;
+  const wxString temporary = wxFileName::CreateTempFileName(
+      wxFileName(dialog.GetPath()).GetPathWithSep() + wxT("audmes-loopback-"));
+  if (temporary.empty()) {
+    wxMessageBox(wxT("无法创建临时文件。"), wxT("保存失败"), wxOK | wxICON_ERROR, this);
+    return;
+  }
+  wxFile file(temporary, wxFile::write);
+  const bool written = file.IsOpened() && file.Write(contents.data(), contents.size()) == contents.size();
+  const bool flushed = written && file.Flush();
+  const bool closed = file.Close();
+  if (!written || !flushed || !closed || !wxRenameFile(temporary, dialog.GetPath(), true)) {
+    wxRemoveFile(temporary);
+    wxMessageBox(wxT("无法写入所选基准文件。"), wxT("保存失败"), wxOK | wxICON_ERROR, this);
+    return;
+  }
+  frame_1_statusbar->SetStatusText(wxT("Loopback 基准已保存：") + dialog.GetPath());
+}
+
+void MainFrame::OnVoltageReference(wxCommandEvent& WXUNUSED(event)) {
+  if (frm_running || button_spe_start->GetValue() || button_gen_start->GetValue() ||
+      button_osc_start->GetValue()) {
+    wxMessageBox(wxT("请先停止所有采集与输出。"), wxT("电压基准"), wxOK, this);
+    return;
+  }
+  const int output = choice_frm_output->GetSelection();
+  const bool dual = m_dualOutputValid && output >= 0 && output < 2;
+  LoopbackReference reference = dual ? m_dualOutput[output] : CurrentLoopbackReference();
+  std::string error;
+  if ((!dual && (!m_loopbackValid || m_dualOutputValid)) ||
+      reference.outputChannel != output || !ValidateLoopbackReference(reference, &error)) {
+    wxMessageBox(wxT("请先测量或载入与当前激励声道对应的回环基准。"),
+                 wxT("电压基准"), wxOK | wxICON_WARNING, this);
+    return;
+  }
+  wxTextEntryDialog dialog(this, wxString::Format(
+      wxT("录入已由示波器/真有效值仪表测得的 1 kHz 电压。\n"
+          "须使用本基准的同一接线、输入增益、输出音量、%.0f dBFS 激励。\n"
+          "测量跨 IN3 的信号两端；不可把示波器地夹接到耳机输出一路。\n"
+          "输入例如 0.010 Vrms 或 0.028284 Vpp。Vpp 换算仅适用于无削顶正弦。\n"
+          "本操作不播放信号、不自动验证示波器读数。输入 0 可清除电压基准。"),
+      reference.levelDbfs), wxT("录入外部 1 kHz 电压"));
+  if (dialog.ShowModal() != wxID_OK) return;
+  wxString input = dialog.GetValue().Trim().Trim(false);
+  const bool peakToPeak = input.EndsWith(wxT("Vpp"));
+  if (peakToPeak) input.RemoveLast(3);
+  else if (input.EndsWith(wxT("Vrms"))) input.RemoveLast(4);
+  double voltage = 0.0;
+  if (!input.Trim().ToDouble(&voltage) || !std::isfinite(voltage) || voltage < 0.0 ||
+      voltage > 20.0) {
+    wxMessageBox(wxT("请输入 0–20 之间的有限电压，单位为 Vrms 或 Vpp。"),
+                 wxT("无效电压"), wxOK | wxICON_WARNING, this);
+    return;
+  }
+  if (peakToPeak) voltage /= 2.0 * std::sqrt(2.0);
+  reference.measuredVrmsAt1k = voltage;
+  checkbox_fft_voltage_confirm->SetValue(false);
+  if (dual) m_dualOutput[output] = reference;
+  else m_loopbackMeasuredVrms = voltage;
+  DrawFreqResponse();
+  notebook_1_frm->Layout();
+  frame_1_statusbar->SetStatusText(wxT("电压基准已更新；点击保存基准留存。旋钮或接线改变后须重新校准。"));
+}
+
+void MainFrame::OnLoadLoopback(wxCommandEvent& WXUNUSED(event)) {
+  if (frm_running || button_spe_start->GetValue() || button_gen_start->GetValue() ||
+      button_osc_start->GetValue()) {
+    wxMessageBox(wxT("请先停止测量，再载入 Loopback 基准。"),
+                 wxT("音频接口正在使用"), wxOK | wxICON_INFORMATION, this);
+    return;
+  }
+  wxFileDialog dialog(this, wxT("载入 Loopback 基准"), wxEmptyString, wxEmptyString,
+      wxT("AudMeS Loopback (*.audmes-loopback)|*.audmes-loopback"),
+      wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+  if (dialog.ShowModal() != wxID_OK) return;
+  wxFile file(dialog.GetPath(), wxFile::read);
+  const wxFileOffset length = file.IsOpened() ? file.Length() : wxInvalidOffset;
+  if (length <= 0 || length > 1024 * 1024) {
+    wxMessageBox(wxT("基准文件无法读取或超过 1 MB。"), wxT("载入失败"),
+                 wxOK | wxICON_ERROR, this);
+    return;
+  }
+  std::string contents(static_cast<size_t>(length), '\0');
+  if (file.Read(&contents[0], contents.size()) != static_cast<ssize_t>(contents.size())) {
+    wxMessageBox(wxT("读取基准文件失败。"), wxT("载入失败"), wxOK | wxICON_ERROR, this);
+    return;
+  }
+  LoopbackReference reference, rightReference;
+  std::string error;
+  const bool dualFile = contents.rfind("AUDMES_LOOPBACK_DUAL_V1\n", 0) == 0;
+  const bool parsed = dualFile ?
+      ParseDualOutputReferences(contents, &reference, &rightReference, &error) :
+      ParseLoopbackReference(contents, &reference, &error);
+  if (!parsed) {
+    wxMessageBox(wxT("基准文件无效：") + wxString::FromUTF8(error.c_str()),
+                 wxT("载入失败"), wxOK | wxICON_ERROR, this);
+    return;
+  }
+  std::string recordName, playName;
+  if (!GetSelectedDeviceNames(m_RecordDev, m_PlayDev, &recordName, &playName) ||
+      !LoopbackMatchesRoute(reference, m_RWAudio->GetCurrentApiName(), recordName,
+                            playName, m_SamplingFreq, reference.outputChannel,
+                            reference.levelDbfs)) {
+    wxMessageBox(wxT("基准文件与当前音频后端、输入/输出设备或采样率不一致。"
+                     "请先在音频接口设置中选择基准记录的设备。"),
+                 wxT("基准条件不符"), wxOK | wxICON_WARNING, this);
+    return;
+  }
+  m_loopbackApiName = reference.api;
+  m_loopbackRecordName = reference.recordDevice;
+  m_loopbackPlayName = reference.playDevice;
+  m_loopbackAt = wxString::FromUTF8(reference.capturedAt.c_str());
+  m_loopbackRate = reference.sampleRate;
+  m_loopbackRecordDev = m_RecordDev;
+  m_loopbackPlayDev = m_PlayDev;
+  m_loopbackOutputChannel = reference.outputChannel;
+  m_loopbackCaptureChannel = reference.captureChannel;
+  m_loopbackLevelDbfs = reference.levelDbfs;
+  m_loopbackMeasuredVrms = reference.measuredVrmsAt1k;
+  checkbox_fft_voltage_confirm->SetValue(false);
+  m_loopbackFrequencies = reference.frequencies;
+  m_loopbackRms = reference.rms;
+  m_loopbackValid = true;
+  m_dualOutputValid = dualFile;
+  if (dualFile) {
+    m_dualOutput[0] = reference;
+    m_dualOutput[1] = rightReference;
+  }
+  choice_frm_output->SetSelection(reference.outputChannel);
+  text_ctrl_frm_level->SetValue(wxString::Format(wxT("%.1f"), reference.levelDbfs));
+  button_frm_save_reference->Enable(true);
+  checkbox_frm_correct->Enable(true);
+  if (dualFile) {
+    DualOutputBalance balance;
+    std::string balanceError;
+    AnalyzeDualOutputBalance(m_dualOutput[0], m_dualOutput[1], &balance, &balanceError);
+    label_loopback_status->SetLabel(wxString::Format(
+        wxT("● 已载入双输出基准 · 同一 IN3 回环 · 1 kHz 左−右 %+.3f dB"),
+        balance.leftMinusRightDbAt1k));
+  } else {
+    label_loopback_status->SetLabel(wxString::Format(
+        wxT("● 已载入%s输入%s基准 · %u Hz · %.0f dBFS"),
+        reference.captureChannel == 0 ? wxT("左") : wxT("右"),
+        reference.outputChannel == 3 ? wxT("反相差分") : wxT(""),
+        reference.sampleRate, reference.levelDbfs));
+  }
+  notebook_1_home->Layout();
+  DrawFreqResponse();
+  if (m_saStarted && m_saStep == 1) UpdateSA440F5Step();
+  frame_1_statusbar->SetStatusText(wxT("Loopback 基准已载入；请核对输出接线和激励电平"));
+}
+
+void MainFrame::OnSweepViewChanged(wxCommandEvent& WXUNUSED(event)) {
+  if (checkbox_frm_correct->GetValue() && m_loopbackValid)
+    choice_frm_channel->SetSelection(m_loopbackCaptureChannel + 1);
+  choice_frm_channel->Enable(!checkbox_frm_correct->GetValue());
+  DrawFreqResponse();
 }
 
 void MainFrame::DrawOscilloscope(void) {
@@ -884,8 +2134,10 @@ void MainFrame::DrawSpectrum(void) {
   }
 
   double dval = 0.0;
-  double dmax = 0.0;
   double dval_db = 0.0;
+  double windowSumSquares = 0.0;
+  for (int i = 0; i < nsampl; ++i) windowSumSquares += windowf[i] * windowf[i];
+  std::vector<double> powerBins(nsampl / 2, 0.0);
 
   // left channel
   double offsetL = calc_dc(g_SpeBuffer_Left, nsampl);
@@ -899,52 +2151,92 @@ void MainFrame::DrawSpectrum(void) {
     for (int i = 1; i < nsampl / 2; i++) {
       // multiply amplitude by 2 to compensate
       dval = 2 * sqrt(realout[i] * realout[i] + imagout[i] * imagout[i]);
+      powerBins[i] = 2.0 * (realout[i] * realout[i] + imagout[i] * imagout[i]) /
+                     (nsampl * windowSumSquares);
       m_SMASpeLeft->AddVal(i, dval);
-      dval_db = 20.0 * log10(m_SMASpeLeft->GetSMA(i));
+      const double averaged = m_SMASpeLeft->GetSMA(i);
+      dval_db = averaged > 0.0 ? 20.0 * log10(averaged) : -150.0;
       spe_lmagns.Add(dval_db);
     }
   } else {
     /* wrong computation */
-    for (int i = 0; i < nsampl / 2; i++) {
+    for (int i = 1; i < nsampl / 2; i++) {
       spe_lmagns.Add(-150);
     }
   }
 
-  /* find frequency index with highest amplitude */
-  int fmax = 0;
-  for (int i = 0; i < nsampl / 2; i++) {
-    if (m_SMASpeLeft->GetSMA(i) > dmax) {
-      dmax = m_SMASpeLeft->GetSMA(i);
-      fmax = i;
-    }
+  const double upperHz = choice_fft_bandwidth->GetSelection() == 1 ? 10000.0 :
+      choice_fft_bandwidth->GetSelection() == 2 ? 40000.0 : 20000.0;
+  const SpectrumMetrics metrics = AnalyzeSpectrum(powerBins, nsampl, m_SamplingFreq,
+      choice_fft->GetSelection(), 20.0, upperHz);
+  wxString harmonics;
+  for (int harmonic = 2; harmonic <= 10; ++harmonic) {
+    if (harmonic == 7) harmonics += wxT("\n");
+    else if (harmonic > 2) harmonics += wxT(" · ");
+    harmonics += metrics.hasHarmonic[harmonic - 2]
+                     ? wxString::Format(wxT("H%d  %.2f dBc"), harmonic,
+                                        metrics.harmonicsDbc[harmonic - 2])
+                     : wxString::Format(wxT("H%d  -- dBc"), harmonic);
   }
-
-  /* use that frequency as base and calculate distortion
-   * but only if the magnitude is above -90 db
-   */
-  double freq = 0.0;
-  double thd = 0.0;
-  double thdval[10] = {1.0E-6};
-  if (fmax > 0 && dmax > 0.00003) {
-    freq = (double)fmax * m_SamplingFreq / nsampl;
-    for (int i = 0; i < 10; i++) {
-      int j = fmax * (i + 1);
-      if (j < nsampl / 2)
-        thdval[i] = m_SMASpeLeft->GetSMA(j);
-      else
-        thdval[i] = 0.0;
+  label_harmonics_value->SetLabel(harmonics);
+  label_thdn_sinad_value->SetLabel(
+      metrics.hasThdn
+          ? wxString::Format(wxT("THD+N  %.6f %% / %.2f dB · SINAD  %.2f dB"),
+                             metrics.thdnPercent, metrics.thdnDb, metrics.sinadDb)
+          : wxString(wxT("THD+N  -- % / -- dB · SINAD  -- dB")));
+  const wxString snr = metrics.hasSnr
+                           ? wxString::Format(wxT("%.2f dB"), metrics.snrDb)
+                           : wxString(wxT("-- dB"));
+  const wxString noise = metrics.hasNoiseFloor
+                             ? wxString::Format(wxT("%.2f dBFS/Hz"),
+                                                metrics.noiseFloorDbfsPerHz)
+                             : wxString(wxT("-- dBFS/Hz"));
+  label_snr_noise_value->SetLabel(
+      wxString::Format(wxT("SNR  %s · 底噪  %s（积分频点 %.1f–%.1f Hz，未计权）"),
+          snr.c_str(), noise.c_str(), metrics.bandLowHz, metrics.bandHighHz));
+  label_integrated_noise->SetLabel(metrics.hasIntegratedNoise ? wxString::Format(
+      checkbox_fft_a_weighting->GetValue() ?
+          wxT("积分噪声  %.2f dBFS（A 计权；频点 %.1f–%.1f Hz）") :
+          wxT("积分噪声  %.2f dBFS（未计权；频点 %.1f–%.1f Hz）"),
+      checkbox_fft_a_weighting->GetValue() ? metrics.aWeightedNoiseDbfs :
+          metrics.integratedNoiseDbfs, metrics.bandLowHz, metrics.bandHighHz) :
+      wxString(wxT("积分噪声  -- dBFS")));
+  if (metrics.hasFundamental) {
+    label_fft_freq_value->SetLabel(
+        wxString::Format(wxT("基波  %.2f Hz"), metrics.fundamentalHz));
+    wxString amplitude = wxString::Format(wxT("幅度  %.2f dBFS"), metrics.fundamentalDbfs);
+    const int selectedOutput = choice_frm_output->GetSelection();
+    const bool selectedDual = m_dualOutputValid && selectedOutput >= 0 && selectedOutput < 2;
+    const LoopbackReference voltageReference = selectedDual ?
+        m_dualOutput[selectedOutput] : CurrentLoopbackReference();
+    double volts = 0.0;
+    const bool routeMatches = m_RecordDev == m_loopbackRecordDev &&
+        m_PlayDev == m_loopbackPlayDev && m_SamplingFreq == voltageReference.sampleRate &&
+        voltageReference.api == m_RWAudio->GetCurrentApiName();
+    if (checkbox_fft_voltage_confirm->GetValue() && routeMatches &&
+        (selectedDual || (m_loopbackValid && !m_dualOutputValid)) &&
+        LoopbackToneDbfsToVrms(voltageReference, metrics.fundamentalHz,
+                              metrics.fundamentalDbfs, 0, &volts)) {
+      amplitude += wxString::Format(wxT("\n1 kHz 基准换算 %.6f Vrms"), volts);
+    } else {
+      amplitude += wxT("\nVrms --（无有效基准/条件未确认）");
     }
-    thd = 100 *
-          (thdval[1] + thdval[2] + thdval[3] + thdval[4] + thdval[5] + thdval[6] + thdval[7] +
-           thdval[8] + thdval[9]) /
-          thdval[0];
+    label_fft_mag_value->SetLabel(amplitude);
+    label_thd_value->SetLabel(
+        wxString::Format(wxT("THD  %.6f %%"), metrics.thdPercent));
+    label_latest_result->SetLabel(wxString::Format(
+        wxT("FFT / THD · 基波 %.2f Hz · 幅度 %.2f dBFS · THD %.6f %% · %u Hz"),
+        metrics.fundamentalHz, metrics.fundamentalDbfs, metrics.thdPercent, m_SamplingFreq));
+  } else {
+    label_fft_freq_value->SetLabel(wxT("基波  -- Hz"));
+    label_fft_mag_value->SetLabel(wxT("幅度  -- dBFS"));
+    label_thd_value->SetLabel(wxT("THD  -- %"));
+    label_latest_result->SetLabel(wxT("FFT / THD · 暂未检测到可分析的基波"));
   }
-
-  /* display base frequency, magnitude and distortion */
   wxString freqency;
-  freqency.Printf(wxT("Frequency : %.1lf Hz, Magnitude: %.1lf dB, THD : %lf%%, Avg: %d/%d"), freq,
-                  20.0 * log10(thdval[0]), thd, m_SMASpeLeft->GetNumSummed(1),
-                  m_SMASpeLeft->GetNumAverage());
+  freqency.Printf(wxT("基波 %.2f Hz · 幅度 %.2f dBFS · THD %.6f %% · 平均 %d/%d"),
+                  metrics.fundamentalHz, metrics.fundamentalDbfs, metrics.thdPercent,
+                  m_SMASpeLeft->GetNumSummed(1), m_SMASpeLeft->GetNumAverage());
   frame_1_statusbar->SetStatusText(freqency);
 
   // right channel
@@ -959,12 +2251,13 @@ void MainFrame::DrawSpectrum(void) {
     for (int i = 1; i < nsampl / 2; i++) {
       dval = 2 * sqrt(realout[i] * realout[i] + imagout[i] * imagout[i]);
       m_SMASpeRight->AddVal(i, dval);
-      dval_db = (20.0 * log10(m_SMASpeRight->GetSMA(i)));
+      const double averaged = m_SMASpeRight->GetSMA(i);
+      dval_db = averaged > 0.0 ? 20.0 * log10(averaged) : -150.0;
       spe_rmagns.Add(dval_db);
     }
   } else {
     /* wrong computation */
-    for (int i = 0; i < nsampl / 2; i++) {
+    for (int i = 1; i < nsampl / 2; i++) {
       spe_rmagns.Add(-150);
     }
   }
@@ -973,6 +2266,20 @@ void MainFrame::DrawSpectrum(void) {
   // frequencies without DC
   for (int i = 1; i < nsampl / 2; i++) {
     spe_freqs.Add(fbase * i);
+  }
+  if (checkbox_spe_peak_hold->GetValue()) {
+    if (spe_peak_lmagns.GetCount() != spe_lmagns.GetCount() ||
+        spe_peak_rmagns.GetCount() != spe_rmagns.GetCount()) {
+      spe_peak_lmagns = spe_lmagns;
+      spe_peak_rmagns = spe_rmagns;
+    } else {
+      for (size_t i = 0; i < spe_lmagns.GetCount(); ++i) {
+        if (spe_lmagns[i] > spe_peak_lmagns[i]) spe_peak_lmagns[i] = spe_lmagns[i];
+        if (spe_rmagns[i] > spe_peak_rmagns[i]) spe_peak_rmagns[i] = spe_rmagns[i];
+      }
+    }
+    spe_lmagns = spe_peak_lmagns;
+    spe_rmagns = spe_peak_rmagns;
   }
   window_1_spe->SetTrack1(spe_lmagns);
   window_1_spe->SetTrack2(spe_rmagns);
@@ -1018,6 +2325,14 @@ void MainFrame::OnTimer(wxTimerEvent& WXUNUSED(event)) {
 }
 
 void MainFrame::OnXScaleChanged(wxCommandEvent& WXUNUSED(event)) {
+  if (frm_running || button_spe_start->GetValue() || button_gen_start->GetValue() ||
+      button_osc_start->GetValue()) {
+    choice_fftlength->SetStringSelection(
+        wxString::Format(wxT("%lu"), m_SpeBufferLength));
+    wxMessageBox(wxT("请先停止正在使用音频接口的测量，再更改 FFT 点数。"),
+                 wxT("采集窗口正在使用"), wxOK | wxICON_WARNING, this);
+    return;
+  }
   sweep_div = wxAtoi(choice_osc_swp->GetString(choice_osc_swp->GetSelection()));
   setoscbuf();
   window_osc->SetXRange(0, sweep_div * 10E-6, 0);
@@ -1027,6 +2342,8 @@ void MainFrame::OnXScaleChanged(wxCommandEvent& WXUNUSED(event)) {
   m_RWAudio->ChangeBufLen((unsigned long)(m_OscBufferLength), m_SpeBufferLength);
   m_SMASpeLeft->SetNumRecords(m_SpeBufferLength >> 1);
   m_SMASpeRight->SetNumRecords(m_SpeBufferLength >> 1);
+  spe_peak_lmagns.Clear();
+  spe_peak_rmagns.Clear();
 
   const double range[] = {1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000};
   range_div = 1 / range[choice_osc_l_res->GetSelection()];
@@ -1043,6 +2360,39 @@ void MainFrame::OnFFTAvgChanged(wxCommandEvent& WXUNUSED(event)) {
   int numAverage = wxAtoi(choice_fftavg->GetString(choice_fftavg->GetSelection()));
   m_SMASpeLeft->SetNumAverage(numAverage);
   m_SMASpeRight->SetNumAverage(numAverage);
+  spe_peak_lmagns.Clear();
+  spe_peak_rmagns.Clear();
+}
+
+void MainFrame::OnFFTWindowChanged(wxCommandEvent& WXUNUSED(event)) {
+  spe_peak_lmagns.Clear();
+  spe_peak_rmagns.Clear();
+}
+
+void MainFrame::OnPeakHoldToggle(wxCommandEvent& WXUNUSED(event)) {
+  spe_peak_lmagns.Clear();
+  spe_peak_rmagns.Clear();
+  spe_freqs.Clear();
+  spe_lmagns.Clear();
+  spe_rmagns.Clear();
+  window_1_spe->SetTrack1(wxArrayDouble());
+  window_1_spe->SetTrack2(wxArrayDouble());
+  window_1_spe->SetTrackX(wxArrayDouble());
+  window_1_spe->Refresh();
+}
+
+void MainFrame::OnPeakHoldReset(wxCommandEvent& WXUNUSED(event)) {
+  spe_peak_lmagns.Clear();
+  spe_peak_rmagns.Clear();
+  if (checkbox_spe_peak_hold->GetValue()) {
+    spe_freqs.Clear();
+    spe_lmagns.Clear();
+    spe_rmagns.Clear();
+    window_1_spe->SetTrack1(wxArrayDouble());
+    window_1_spe->SetTrack2(wxArrayDouble());
+    window_1_spe->SetTrackX(wxArrayDouble());
+    window_1_spe->Refresh();
+  }
 }
 
 void MainFrame::OnFFTScaleChanged(wxCommandEvent& WXUNUSED(event)) {
@@ -1056,12 +2406,25 @@ void MainFrame::OnFFTScaleChanged(wxCommandEvent& WXUNUSED(event)) {
 
 void MainFrame::OnSpanStart(wxCommandEvent& WXUNUSED(event)) {
   if (button_spe_start->GetValue()) {
+    if (frm_running) {
+      button_spe_start->SetValue(false);
+      wxMessageBox(wxT("请先停止扫频，再开始 FFT。"), wxT("音频接口正在使用"),
+                     wxOK | wxICON_INFORMATION, this);
+      return;
+    }
     m_SMASpeLeft->SetNumRecords(m_SpeBufferLength >> 1);
     m_SMASpeRight->SetNumRecords(m_SpeBufferLength >> 1);
-    button_spe_start->SetLabel(_T("Stop"));
-    m_RWAudio->StartSnd();
+    spe_peak_lmagns.Clear();
+    spe_peak_rmagns.Clear();
+    button_spe_start->SetLabel(_T("停止 FFT"));
+    if (m_RWAudio->StartSnd() != 0) {
+      button_spe_start->SetValue(false);
+      button_spe_start->SetLabel(wxT("开始 FFT"));
+      wxMessageBox(wxT("无法启动音频接口。请检查设备连接，并确保 Windows 输入、输出采样率一致。"),
+                     wxT("FFT 启动失败"), wxOK | wxICON_ERROR, this);
+    }
   } else {
-    button_spe_start->SetLabel(_T("Start"));
+    button_spe_start->SetLabel(_T("开始 FFT"));
     m_RWAudio->StopSnd();
   }
 }
@@ -1089,26 +2452,110 @@ void MainFrame::OnOscStart(wxCommandEvent& WXUNUSED(event)) {
 
 void MainFrame::OnFrmStart(wxCommandEvent& WXUNUSED(event)) {
   if (button_frm_start->GetValue()) {
-    long ip;
-    button_frm_start->SetLabel(_T("Stop"));
-    wxString tpoints = text_ctrl1_frm->GetValue();
-    tpoints.ToLong(&ip, 10);
-    if (ip > 120) ip = 120;
-    if (ip < 1) ip = 1;
-    frm_ipoints = (int)ip;
+    double startHz = 0.0;
+    double endHz = 0.0;
+    double levelDbfs = 0.0;
+    long points = 0;
+    const bool validFields = text_ctrl_frm_start->GetValue().ToDouble(&startHz) &&
+                             text_ctrl_frm_end->GetValue().ToDouble(&endHz) &&
+                             text_ctrl_frm_level->GetValue().ToDouble(&levelDbfs) &&
+                             text_ctrl1_frm->GetValue().ToLong(&points);
+    const std::vector<double> plan = validFields && points >= 2 && points <= 120
+        ? BuildSweepFrequencies(startHz, endHz, static_cast<int>(points),
+                                choice_frm_spacing->GetSelection() == 0, m_SamplingFreq)
+        : std::vector<double>();
+    if (plan.empty() || !std::isfinite(levelDbfs) || levelDbfs < -80.0 ||
+        levelDbfs > -20.0) {
+      button_frm_start->SetValue(false);
+      wxMessageBox(wxT("请检查扫频设置：起点 ≥20 Hz、终点高于起点且 ≤40 kHz，"
+                       "终点须低于当前采样率的 48%；点数 2–120，数字激励 -80 至 -20 dBFS。"),
+                   wxT("扫频设置无效"), wxOK | wxICON_WARNING, this);
+      return;
+    }
+    if (button_spe_start->GetValue() || button_gen_start->GetValue() ||
+        button_osc_start->GetValue()) {
+      button_frm_start->SetValue(false);
+      wxMessageBox(wxT("请先停止 FFT、信号源或示波器，再开始扫频。"),
+                   wxT("音频接口正在使用"), wxOK | wxICON_WARNING, this);
+      return;
+    }
+
+    // Keep at least four periods of the lowest tone in each captured record.
+    const unsigned long minimumSamples =
+        static_cast<unsigned long>(std::ceil(4.0 * m_SamplingFreq / startHz));
+    unsigned long requiredSamples = m_SpeBufferLength;
+    if (requiredSamples < minimumSamples) requiredSamples = minimumSamples;
+    int fftSelection = 0;
+    while (fftSelection < static_cast<int>(choice_fftlength->GetCount()) &&
+           static_cast<unsigned long>(wxAtoi(choice_fftlength->GetString(fftSelection))) <
+               requiredSamples) ++fftSelection;
+    if (fftSelection == static_cast<int>(choice_fftlength->GetCount())) {
+      button_frm_start->SetValue(false);
+      wxMessageBox(wxT("当前采样率与起始频率需要更长的采集窗口。"),
+                   wxT("无法开始扫频"), wxOK | wxICON_WARNING, this);
+      return;
+    }
+    const unsigned long selectedSamples =
+        static_cast<unsigned long>(wxAtoi(choice_fftlength->GetString(fftSelection)));
+    if (selectedSamples != m_SpeBufferLength) {
+      choice_fftlength->SetSelection(fftSelection);
+      m_SpeBufferLength = selectedSamples;
+      m_RWAudio->ChangeBufLen(static_cast<long int>(m_OscBufferLength),
+                              static_cast<long int>(m_SpeBufferLength));
+      m_SMASpeLeft->SetNumRecords(m_SpeBufferLength >> 1);
+      m_SMASpeRight->SetNumRecords(m_SpeBufferLength >> 1);
+      spe_peak_lmagns.Clear();
+      spe_peak_rmagns.Clear();
+    }
+
+    frm_plan = plan;
+    frm_input_gain = pow(10.0, levelDbfs / 20.0);
+    m_sweepLeftPeak = 0.0;
+    m_sweepRightPeak = 0.0;
+    frm_output_channel = choice_frm_output->GetSelection();
+    m_sweepLevelDbfs = levelDbfs;
+    m_sweepRate = m_SamplingFreq;
+    m_sweepRecordDev = m_RecordDev;
+    m_sweepPlayDev = m_PlayDev;
+    const bool matchingBaseline = CurrentSweepMatchesLoopback();
+    checkbox_frm_correct->Enable(matchingBaseline);
+    if (!matchingBaseline) {
+      checkbox_frm_correct->SetValue(false);
+      choice_frm_channel->Enable(true);
+    }
+    m_sweepComplete = false;
+    button_frm_reference->Enable(false);
+    frm_ipoints = static_cast<int>(frm_plan.size());
     frm_istep = 0;
 
     frm_freqs.Clear();
     frm_lgains.Clear();
     frm_rgains.Clear();
+    window_1_frm->SetTrack1(wxArrayDouble());
+    window_1_frm->SetTrack2(wxArrayDouble());
+    window_1_frm->SetTrackX(wxArrayDouble());
+    window_1_frm->SetMarkers(std::vector<CtrlOScope::Marker>());
+    label_frm_summary->SetLabel(wxT("−3 dB 截止点：等待扫频数据"));
 
     frm_measure = 0;
     frm_running = true;
-    m_RWAudio->StartSnd();
+    window_1_frm->SetXRange(startHz, endHz, choice_frm_spacing->GetSelection() == 0 ? 1 : 0);
+    button_frm_start->SetLabel(wxT("停止扫频"));
+    if (m_RWAudio->StartSnd() != 0) {
+      frm_running = false;
+      button_frm_start->SetValue(false);
+      button_frm_start->SetLabel(wxT("开始扫频"));
+      wxMessageBox(wxT("无法启动音频接口，请检查设备连接与采样率。"),
+                   wxT("扫频启动失败"), wxOK | wxICON_ERROR, this);
+    }
   } else {
+    m_autoLoopback = false;
+    m_autoLoopbackPhase = 0;
+    button_frm_auto_reference->Enable(true);
+    button_frm_diff_reference->Enable(true);
     frm_running = false;
     button_frm_start->SetValue(false);
-    button_frm_start->SetLabel(_T("Start"));
+    button_frm_start->SetLabel(wxT("开始扫频"));
     m_RWAudio->StopSnd();
     SendGenSettings();  // stop generator
   }
@@ -1232,6 +2679,12 @@ void MainFrame::TriggerSettings() {
 }
 
 void MainFrame::OnSelectSndCard(wxCommandEvent& WXUNUSED(event)) {
+  if (frm_running || button_spe_start->GetValue() || button_gen_start->GetValue() ||
+      button_osc_start->GetValue()) {
+    wxMessageBox(wxT("请先停止测量，再更改音频接口。"), wxT("音频接口正在使用"),
+                   wxOK | wxICON_INFORMATION, this);
+    return;
+  }
   unsigned int recdev, pldev;
   RWAudioDevList playDevList;
   RWAudioDevList recordDevList;
@@ -1258,6 +2711,12 @@ void MainFrame::OnSelectSndCard(wxCommandEvent& WXUNUSED(event)) {
     setoscbuf();
     m_RWAudio->ChangeBufLen((unsigned long)(m_OscBufferLength), m_SpeBufferLength);
     g_OscBufferChanged.store(false);
+    m_e4x4Detected = false;
+    label_device_status->SetLabel(wxT("● 已手动选择音频接口"));
+    label_device_status->SetForegroundColour(wxColour(91, 214, 141));
+    label_device_detail->SetLabel(
+        wxString::Format(wxT("录音设备 #%u · 播放设备 #%u · %u Hz"), m_RecordDev, m_PlayDev,
+                         m_SamplingFreq));
   }
 }
 

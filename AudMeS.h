@@ -24,15 +24,17 @@
 #include <wx/notebook.h>
 // end wxGlade
 #include <wx/tglbtn.h>
+#include <vector>
 
 #include "CtrlOScope.h"
 #include "RWAudio_IO.h"
+#include "loopback_reference.h"
 #include "sma_2d.h"
 
 #ifndef AUDMES_H
 #define AUDMES_H
 
-#define AUDMES_VERSION_STRING "2026-05-14"
+#define AUDMES_VERSION_STRING "2026-09-27-cn-preview3"
 
 class MainFrame : public wxFrame {
   wxDECLARE_CLASS(MainFrame);
@@ -65,6 +67,18 @@ class MainFrame : public wxFrame {
   void OnGenStart(wxCommandEvent& event);
   void OnOscStart(wxCommandEvent& event);
   void OnFrmStart(wxCommandEvent& event);
+  void OnSweepViewChanged(wxCommandEvent& event);
+  void OnCaptureLoopback(wxCommandEvent& event);
+  void OnAutoLoopback(wxCommandEvent& event);
+  void OnAutoDifferentialLoopback(wxCommandEvent& event);
+  bool CaptureLoopback(bool confirmWiring);
+  void OnSaveLoopback(wxCommandEvent& event);
+  void OnLoadLoopback(wxCommandEvent& event);
+  void OnVoltageReference(wxCommandEvent& event);
+  bool GetSelectedDeviceNames(unsigned int recordId, unsigned int playId,
+                              std::string* recordName, std::string* playName);
+  LoopbackReference CurrentLoopbackReference() const;
+  bool CurrentSweepMatchesLoopback() const;
   void OnAboutClick(wxCommandEvent& event);
   void OnExitClick(wxCommandEvent& event);
   void OnClose(wxCloseEvent& event);
@@ -90,12 +104,33 @@ class MainFrame : public wxFrame {
   void OnXScaleChanged(wxCommandEvent& event);
   void OnFFTAvgChanged(wxCommandEvent& event);
   void OnFFTScaleChanged(wxCommandEvent& event);
+  void OnFFTWindowChanged(wxCommandEvent& event);
+  void OnPeakHoldToggle(wxCommandEvent& event);
+  void OnPeakHoldReset(wxCommandEvent& event);
+  void OnSAStart(wxCommandEvent& event);
+  void OnSAPrev(wxCommandEvent& event);
+  void OnSANext(wxCommandEvent& event);
+  void OnSARepeat(wxCommandEvent& event);
+  void OnSAAudioSetup(wxCommandEvent& event);
+  void OnSABaselineSweep(wxCommandEvent& event);
+  bool SADifferentialBaselineReady(wxString* reason = nullptr);
+  void OnDeviceRefresh(wxCommandEvent& event);
+  void OnHomeFFT(wxCommandEvent& event);
+  void OnHomeSweep(wxCommandEvent& event);
+  void OnHomeSA(wxCommandEvent& event);
   void DrawFreqResponse(void);
   void CalcFreqResponse(void);
   void DrawOscilloscope(void);
   void DrawSpectrum(void);
   void SendGenSettings(void);
   void TriggerSettings(void);
+  void BuildInstrumentHome();
+  void BuildSA440F5Panel();
+  void ApplyInstrumentTheme(wxWindow* root);
+  void UpdateSA440F5Step();
+  void AutoDetectE4x4(bool showMessage = false);
+  wxBitmap MakeGuidePlaceholder(const wxString& title, const wxString& subtitle,
+                                const wxSize& size);
 
  protected:
   // begin wxGlade: MainFrame::attributes
@@ -150,6 +185,9 @@ class MainFrame : public wxFrame {
 
   wxStaticText* label_5;
   wxChoice* choice_fft;
+  wxChoice* choice_fft_bandwidth;
+  wxCheckBox* checkbox_fft_a_weighting;
+  wxStaticText* label_integrated_noise;
   wxStaticText* label_9;
   wxChoice* choice_fftlength;
   wxStaticText* label_rx;
@@ -162,7 +200,11 @@ class MainFrame : public wxFrame {
   wxChoice* choice_spe_dbdiv;
   CtrlOScope* window_1_spe;
   wxToggleButton* button_spe_start;
+  wxCheckBox* checkbox_spe_peak_hold;
+  wxButton* button_spe_peak_reset;
   wxPanel* notebook_1_spe;
+  wxPanel* notebook_1_home;
+  wxPanel* notebook_1_sa;
   wxNotebook* notebook_1;
   wxTextCtrl* txt_freq_l;
   wxTextCtrl* txt_freq_r;
@@ -175,6 +217,23 @@ class MainFrame : public wxFrame {
   wxStaticText* label_1_frm;
   wxStaticText* label_2_frm;
   wxTextCtrl* text_ctrl1_frm;
+  wxTextCtrl* text_ctrl_frm_start;
+  wxTextCtrl* text_ctrl_frm_end;
+  wxTextCtrl* text_ctrl_frm_level;
+  wxChoice* choice_frm_spacing;
+  wxCheckBox* checkbox_frm_normalize;
+  wxChoice* choice_frm_channel;
+  wxChoice* choice_frm_output;
+  wxCheckBox* checkbox_frm_correct;
+  wxButton* button_frm_reference;
+  wxButton* button_frm_auto_reference;
+  wxButton* button_frm_diff_reference;
+  wxButton* button_frm_save_reference;
+  wxButton* button_frm_load_reference;
+  wxButton* button_frm_voltage_reference;
+  wxCheckBox* checkbox_fft_voltage_confirm;
+  wxStaticText* label_frm_calibration;
+  wxStaticText* label_frm_summary;
   wxTextCtrl* text_ctrl2_frm;
   wxToggleButton* button_frm_start;
   CtrlOScope* window_1_frm;
@@ -188,6 +247,34 @@ class MainFrame : public wxFrame {
   int frm_ipoints;
   int frm_istep;
   int frm_measure;
+  double frm_input_gain;
+  int frm_output_channel;
+  bool m_sweepComplete;
+  bool m_autoLoopback;
+  int m_autoLoopbackPhase;
+  bool m_dualOutputValid;
+  LoopbackReference m_dualOutput[2];
+  double m_sweepLevelDbfs;
+  double m_sweepLeftPeak;
+  double m_sweepRightPeak;
+  unsigned int m_sweepRate;
+  unsigned int m_sweepRecordDev;
+  unsigned int m_sweepPlayDev;
+  bool m_loopbackValid;
+  unsigned int m_loopbackRate;
+  unsigned int m_loopbackRecordDev;
+  unsigned int m_loopbackPlayDev;
+  int m_loopbackOutputChannel;
+  int m_loopbackCaptureChannel;
+  double m_loopbackLevelDbfs;
+  double m_loopbackMeasuredVrms = 0.0;
+  wxString m_loopbackAt;
+  std::string m_loopbackApiName;
+  std::string m_loopbackRecordName;
+  std::string m_loopbackPlayName;
+  std::vector<double> m_loopbackFrequencies;
+  std::vector<double> m_loopbackRms;
+  std::vector<double> frm_plan;
   double sweep_div;
 
   int trigger_channel;
@@ -201,6 +288,8 @@ class MainFrame : public wxFrame {
   wxArrayDouble spe_freqs;
   wxArrayDouble spe_lmagns;
   wxArrayDouble spe_rmagns;
+  wxArrayDouble spe_peak_lmagns;
+  wxArrayDouble spe_peak_rmagns;
   wxArrayDouble frm_freqs;
   wxArrayDouble frm_lgains;
   wxArrayDouble frm_rgains;
@@ -216,6 +305,39 @@ class MainFrame : public wxFrame {
   unsigned int m_PlayDev;
   unsigned int m_RecordDev;
   unsigned int m_SamplingFreq;
+
+  wxStaticText* label_device_status;
+  wxStaticText* label_device_detail;
+  wxStaticText* label_home_hint;
+  wxStaticText* label_loopback_status;
+  wxStaticText* label_current_dut;
+  wxStaticText* label_latest_result;
+  wxButton* button_device_refresh;
+  wxButton* button_home_fft;
+  wxButton* button_home_sweep;
+  wxButton* button_home_sa;
+  wxStaticText* label_thd_value;
+  wxStaticText* label_fft_freq_value;
+  wxStaticText* label_fft_mag_value;
+  wxStaticText* label_harmonics_value;
+  wxStaticText* label_thdn_sinad_value;
+  wxStaticText* label_snr_noise_value;
+
+  wxStaticText* label_sa_step_counter;
+  wxStaticText* label_sa_step_title;
+  wxStaticText* label_sa_step_body;
+  wxStaticBitmap* bitmap_sa_guide;
+  wxGauge* gauge_sa_progress;
+  wxButton* button_sa_start;
+  wxButton* button_sa_prev;
+  wxButton* button_sa_next;
+  wxButton* button_sa_repeat;
+  wxButton* button_sa_audio_setup;
+  wxButton* button_sa_baseline_sweep;
+  int m_saStep;
+  bool m_saStarted;
+  bool m_e4x4Detected;
+  wxString m_e4x4Name;
 };
 
 #endif  // AUDMES_H

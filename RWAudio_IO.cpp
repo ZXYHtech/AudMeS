@@ -28,6 +28,8 @@
 #include <stdio.h>
 
 #include <atomic>
+#include <algorithm>
+#include <cctype>
 #include <map>
 
 #ifndef M_PI
@@ -289,6 +291,7 @@ int inout(void *outputBuffer, void *inputBuffer, unsigned int nBufferFrames,
 }
 
 RWAudio::RWAudio() {
+  m_AudioDriver = nullptr;
   m_sampleRate = 0;
   stream_running = 0;
   m_channel = 0;
@@ -300,8 +303,9 @@ RWAudio::RWAudio() {
 }
 
 RWAudio::~RWAudio() {
-  m_AudioDriver->stopStream();
-  m_AudioDriver->closeStream();
+  // RtAudio owns stream shutdown. stopStream() on a closed stream throws,
+  // including when a user only enumerates devices and then exits.
+  delete m_AudioDriver;
 }
 
 /*
@@ -398,6 +402,16 @@ int RWAudio::StopSnd() {
  * Start audio stream
  */
 int RWAudio::StartAudio(int recDevId, int playDevId) {
+  if (m_AudioDriver->getCurrentApi() == RtAudio::WINDOWS_WASAPI) {
+    const auto input = m_AudioDriver->getDeviceInfo(recDevId);
+    const auto output = m_AudioDriver->getDeviceInfo(playDevId);
+    if (input.preferredSampleRate != m_sampleRate || output.preferredSampleRate != m_sampleRate) {
+      std::cerr << "Measurement requires matching WASAPI endpoint mix rates: input="
+                << input.preferredSampleRate << ", output=" << output.preferredSampleRate
+                << ", requested=" << m_sampleRate << std::endl;
+      return 1;
+    }
+  }
   // adapt to number of channels
   RtAudio::DeviceInfo info = m_AudioDriver->getDeviceInfo(recDevId);
   if (info.inputChannels > 1 || info.duplexChannels > 1)
@@ -477,6 +491,10 @@ void RWAudio::SetTrigger(int channel, int edge, double level, double hyst, int p
 /*
  * Devices enumeration
  */
+std::string RWAudio::GetCurrentApiName() const {
+  return RtAudio::getApiName(m_AudioDriver->getCurrentApi());
+}
+
 int RWAudio::GetRWAudioDevices(RWAudioDevList *play, RWAudioDevList *record) {
   // Determine the number of devices available
   unsigned int devices = m_AudioDriver->getDeviceCount();
@@ -498,6 +516,10 @@ int RWAudio::GetRWAudioDevices(RWAudioDevList *play, RWAudioDevList *record) {
     info = m_AudioDriver->getDeviceInfo(i);
 
     if (info.probed == true) {
+      // WASAPI advertises resampled rates, not native measurement bandwidth.
+      // Expose only the Windows endpoint mix rate to avoid misleading results.
+      if (m_AudioDriver->getCurrentApi() == RtAudio::WINDOWS_WASAPI)
+        info.sampleRates.assign(1, info.preferredSampleRate);
       //      std::cout << "device = " << i << "; name: " << info.name << "\n";
 
       // add play card
@@ -515,6 +537,96 @@ int RWAudio::GetRWAudioDevices(RWAudioDevList *play, RWAudioDevList *record) {
   }
 
   return 0;
+}
+
+
+bool RWAudio::AutoDetectDevice(const std::vector<std::string>& nameHints,
+                               unsigned int* recordDev, unsigned int* playDev,
+                               unsigned int* bestSampleRate, std::string* matchedName) {
+  if (!m_AudioDriver || !recordDev || !playDev || !bestSampleRate || !matchedName) return false;
+
+  auto lower = [](std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return value;
+  };
+
+  auto scoreName = [&](const std::string& rawName) {
+    const std::string deviceName = lower(rawName);
+    int score = 0;
+    if (deviceName.find("e4x4 pre") != std::string::npos) score += 120;
+    if (deviceName.find("e4x4") != std::string::npos) score += 100;
+    if (deviceName.find("topping") != std::string::npos) score += 30;
+    if (score > 0 && deviceName.find("usb audio") != std::string::npos) score += 5;
+    for (const auto& hint : nameHints) {
+      const std::string h = lower(hint);
+      if (!h.empty() && deviceName.find(h) != std::string::npos) score += 20;
+    }
+    return score;
+  };
+
+  int bestRecordScore = -1;
+  int bestPlayScore = -1;
+  unsigned int bestRecordId = 0;
+  unsigned int bestPlayId = 0;
+  RtAudio::DeviceInfo bestRecordInfo;
+  RtAudio::DeviceInfo bestPlayInfo;
+  const unsigned int devices = m_AudioDriver->getDeviceCount();
+
+  for (unsigned int i = 0; i < devices; ++i) {
+    RtAudio::DeviceInfo info;
+    try {
+      info = m_AudioDriver->getDeviceInfo(i);
+    } catch (RtAudioError&) {
+      continue;
+    }
+    if (!info.probed) continue;
+
+    const int score = scoreName(info.name);
+    const std::string deviceName = lower(info.name);
+    const int recordScore = score > 0 && deviceName.find("analog") != std::string::npos ? score + 10 : score;
+    const int playScore = score > 0 && deviceName.find("playback 1/2") != std::string::npos ? score + 10 : score;
+    if ((info.inputChannels > 0 || info.duplexChannels > 0) && recordScore > bestRecordScore) {
+      bestRecordScore = recordScore;
+      bestRecordId = i;
+      bestRecordInfo = info;
+    }
+    if ((info.outputChannels > 0 || info.duplexChannels > 0) && playScore > bestPlayScore) {
+      bestPlayScore = playScore;
+      bestPlayId = i;
+      bestPlayInfo = info;
+    }
+  }
+
+  if (bestRecordScore <= 0 || bestPlayScore <= 0) return false;
+  if (m_AudioDriver->getCurrentApi() == RtAudio::WINDOWS_WASAPI &&
+      bestRecordInfo.preferredSampleRate != bestPlayInfo.preferredSampleRate) return false;
+
+  *recordDev = bestRecordId;
+  *playDev = bestPlayId;
+  *matchedName = bestRecordInfo.name;
+  if (bestPlayInfo.name != bestRecordInfo.name)
+    *matchedName += " / " + bestPlayInfo.name;
+
+  *bestSampleRate = 48000;
+  if (m_AudioDriver->getCurrentApi() == RtAudio::WINDOWS_WASAPI) {
+    *bestSampleRate = bestRecordInfo.preferredSampleRate;
+    return true;
+  }
+  const unsigned int preferredRates[] = {96000, 48000, 44100, 192000};
+  for (unsigned int preferred : preferredRates) {
+    const bool recSupports =
+        std::find(bestRecordInfo.sampleRates.begin(), bestRecordInfo.sampleRates.end(), preferred) !=
+        bestRecordInfo.sampleRates.end();
+    const bool playSupports =
+        std::find(bestPlayInfo.sampleRates.begin(), bestPlayInfo.sampleRates.end(), preferred) !=
+        bestPlayInfo.sampleRates.end();
+    if (recSupports && playSupports) {
+      *bestSampleRate = preferred;
+      break;
+    }
+  }
+  return true;
 }
 
 /*
